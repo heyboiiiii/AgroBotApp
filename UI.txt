@@ -1,0 +1,15 @@
+First View:
+    1 - The entire Map fitting in the screen.
+    
+    2 - When a cow is selected, a windows pops out at the right side of the screen and divide it two
+
+        Window:
+        - Shows the Selected Cow(Name and ID) -> first box
+        - Other data(GPS,Temp,traveled distance(km),a bottom to show historical trip) -> second box
+
+            Historical Trip Function:
+            - Displays each point where the Necklace was and create a trip. 
+            - Indicate with colors(BLUE,GREEN,ORANGE) -> (quiet,normal movement,too much movement).
+
+            RED if cow went out of the limits of the yard.
+

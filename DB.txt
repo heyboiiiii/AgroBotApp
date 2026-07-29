@@ -1,0 +1,266 @@
+PostgreSql DB + PostGIS
+
+Capabilities:
+
+    -Store Users data.
+
+        users
+        -----
+        id
+        name
+        email
+        phone
+        password_hash
+        created_at
+    
+    - Yard limits in coordenates.(these has to be enter previous):  
+        A single client can have multiples yards. And assign animals to only stay in that specfic areas.
+
+        yards
+        -----
+        id
+        user_id
+        name
+        boundary GEOGRAPHY(POLYGON, 4326)
+        created_at
+
+
+    
+    - Historical trip of the animals:
+        
+        gps_positions
+        -------------
+        id
+        animal_id
+        device_id
+        timestamp
+        latitude
+        north_south
+        west_east
+        longitude
+        moviming
+
+
+        animal_daily_statistics
+        -----------------------
+        id
+        animal_id
+        date
+        distance_travelled
+        movement_time
+        sleep_time
+
+    - Profile of each animal associate with a determinate ID necklace:
+        Where the user can select the type of animal and assign a name. 
+
+        animals
+        -------
+        id
+        user_id
+        yard_id
+        name
+        animal_type
+        created_at
+        active
+
+
+        devices
+        -------
+        id
+        device_uid
+        hardware_version
+        firmware_version
+        last_battery_level
+        last_seen
+
+        animal_devices
+        --------------
+        animal_id
+        device_id
+        assigned_at
+        unassigned_at
+    
+        *This structures lets change Necklaces between animals without losing information, or having conflicts with ID device = ID animal.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+PostgreSQL schema
+
+users
+-----
+id
+name
+email
+phone
+password_hash
+created_at
+
+
+yards
+-----
+id
+user_id
+name
+boundary GEOGRAPHY(POLYGON, 4326)
+created_at
+
+
+animals
+-------
+id
+user_id
+yard_id
+name
+animal_type
+created_at
+active
+
+
+devices
+-------
+id
+device_uid
+hardware_version
+firmware_version
+last_battery_level
+last_seen
+
+
+animal_devices
+--------------
+animal_id
+device_id
+assigned_at
+unassigned_at
+
+
+gps_positions
+-------------
+id
+animal_id
+device_id
+timestamp
+position GEOGRAPHY(POINT, 4326)
+speed
+accuracy
+
+
+animal_daily_statistics
+-----------------------
+id
+animal_id
+date
+distance_travelled
+movement_time
+sleep_time
+
+
+GPS DATA SAVED:
+
+    For a small number of animals, PostgreSQL can handle this perfectly.
+
+    For a large commercial system with thousands or millions of GPS points, you can later use:
+
+    PostgreSQL + PostGIS
+    TimescaleDB
+    Partitioning by date
+
+
+
+BACKUPS:
+
+    Each day save a backup of all the data as encrypted object storage
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+┌────────────────────────────────────────────┐
+│              AGRONOMAD PLATFORM            │
+└────────────────────────────────────────────┘
+
+                  ┌───────────┐
+                  │   Client  │
+                  └─────┬─────┘
+                        │
+                        ▼
+                  ┌───────────┐
+                  │ Dashboard │
+                  └─────┬─────┘
+                        │
+                        ▼
+                  ┌───────────┐
+                  │ Backend   │
+                  │ API       │
+                  └─────┬─────┘
+                        │
+             ┌──────────┴──────────┐
+             ▼                     ▼
+      ┌──────────────┐      ┌──────────────┐
+      │ PostgreSQL   │      │ Object       │
+      │ + PostGIS    │      │ Storage      │
+      │              │      │              │
+      │ Users        │      │ Raw Tele/GPS │
+      │ Yards        │      │ Daily files  │
+      │ Animals      │      │ Backups      │
+      │ Devices      │      │              │
+      │ GPS data     │      │              │
+      │ Statistics   │      │              │
+      └──────────────┘      └──────────────┘
+
+
+
+
+
+
+
+
+
+
+
+
+
+
