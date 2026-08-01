@@ -1,35 +1,11 @@
 import { createServer } from 'http'
 import { createServer as createNetServer } from 'net'
+import { initializeDatabase, listAnimals, renameAnimal, seedSampleData, upsertCowSnapshot } from './db/index.js'
 
 const HTTP_PORT = process.env.PORT ? Number(process.env.PORT) : 4000
 const TCP_PORT = process.env.TCP_PORT ? Number(process.env.TCP_PORT) : 4001
 
-let cows = [
-  {
-    id: '01',
-    name: 'Lora',
-    lat: -34.707652,
-    lng: -58.242300,
-    temp: '38.4',
-    hb: '72',
-  },
-  {
-    id: '02',
-    name: 'Lola',
-    lat: -34.707546,
-    lng: -58.239348,
-    temp: '38.1',
-    hb: '68',
-  },
-  {
-    id: '03',
-    name: 'Luna',
-    lat: -34.709948,
-    lng: -58.242870,
-    temp: '38.7',
-    hb: '75',
-  },
-]
+let cows = []
 
 let limitsField = {
   limitsField1: {
@@ -71,6 +47,10 @@ function normalizeCowPayload(raw) {
 }
 
 //
+async function refreshCowState() {
+  cows = await listAnimals()
+}
+
 function mergeCowData(newCow) {
   const existingIndex = cows.findIndex((cow) => cow.id === newCow.id)
   if (existingIndex >= 0) {
@@ -172,23 +152,29 @@ function extractJsonObjects(value) {
   return jsonObjects
 }
 
-function handleIncomingData(rawData) {
+async function handleIncomingData(rawData) {
   const text = rawData.toString('utf8')
   if (!text || (!text.includes('{') && !text.includes('['))) return
   if (/^(GET|POST|HEAD|PUT|DELETE|OPTIONS|CONNECT|TRACE)\s+/i.test(text)) return
 
   const chunks = extractJsonObjects(text)
-  chunks.forEach((chunk) => {
+  for (const chunk of chunks) {
     try {
       const parsed = JSON.parse(chunk)
       if (Array.isArray(parsed)) {
-        parsed.forEach((item) => {
+        for (const item of parsed) {
           const cow = normalizeCowPayload(item)
-          if (cow) mergeCowData(cow)
-        })
+          if (cow) {
+            await upsertCowSnapshot(item)
+            mergeCowData(cow)
+          }
+        }
       } else {
         const cow = normalizeCowPayload(parsed)
-        if (cow) mergeCowData(cow)
+        if (cow) {
+          await upsertCowSnapshot(parsed)
+          mergeCowData(cow)
+        }
 
         if (parsed && typeof parsed === 'object' && parsed.limitsField) {
           const normalizedLimits = normalizeLimitsField(parsed.limitsField)
@@ -200,7 +186,9 @@ function handleIncomingData(rawData) {
     } catch (jsonError) {
       console.warn('Could not parse incoming payload:', chunk)
     }
-  })
+  }
+
+  await refreshCowState()
 }
 
 function createTcpServer() {
@@ -208,13 +196,13 @@ function createTcpServer() {
     console.log('TCP client connected from', `${socket.remoteAddress}:${socket.remotePort}`)
     socket.setEncoding('utf8')
 
-    socket.on('data', (data) => {
+    socket.on('data', async (data) => {
       const text = data.toString('utf8')
       if (!text.includes('{') && !text.includes('[')) {
         return
       }
       console.log('Received socket JSON data:', text.trim())
-      handleIncomingData(data)
+      await handleIncomingData(data)
     })
 
     socket.on('end', () => {
@@ -240,22 +228,39 @@ function createHttpServer() {
     const url = new URL(req.url, `http://${req.headers.host}`)
 
     if (req.method === 'GET' && url.pathname === '/cows') {
-      const payload = JSON.stringify({ cows, limitsField })
-      res.writeHead(200, {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'no-store',
-        'Access-Control-Allow-Origin': '*',
-      })
-      res.end(payload)
+      void (async () => {
+        try {
+          await refreshCowState()
+          const payload = JSON.stringify({ cows, limitsField })
+          res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-store',
+            'Access-Control-Allow-Origin': '*',
+          })
+          res.end(payload)
+        } catch (error) {
+          console.error('Failed to load cows from DB', error)
+          res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
+          res.end(JSON.stringify({ status: 'error', message: 'Database error' }))
+        }
+      })()
       return
     }
 
     if (req.method === 'GET' && url.pathname === '/status') {
-      res.writeHead(200, {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      })
-      res.end(JSON.stringify({ status: 'ok', cows: cows.length }))
+      void (async () => {
+        try {
+          await refreshCowState()
+          res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+          })
+          res.end(JSON.stringify({ status: 'ok', cows: cows.length }))
+        } catch (error) {
+          res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
+          res.end(JSON.stringify({ status: 'error', message: 'Database error' }))
+        }
+      })()
       return
     }
 
@@ -265,7 +270,7 @@ function createHttpServer() {
         body += chunk.toString()
       })
 
-      req.on('end', () => {
+      req.on('end', async () => {
         try {
           const payload = JSON.parse(body)
           const cowId = String(payload?.id ?? '').trim()
@@ -277,14 +282,14 @@ function createHttpServer() {
             return
           }
 
-          const foundCow = cows.find((cow) => cow.id === cowId)
-          if (!foundCow) {
+          const result = await renameAnimal(cowId, newName)
+          if (!result) {
             res.writeHead(404, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' })
             res.end(JSON.stringify({ status: 'error', message: 'Cow not found' }))
             return
           }
 
-          foundCow.name = newName
+          await refreshCowState()
           res.writeHead(200, {
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*',
@@ -304,25 +309,20 @@ function createHttpServer() {
 
   server.listen(HTTP_PORT, () => {
     console.log(`HTTP server listening on port ${HTTP_PORT}`)
-    console.log(`GET /cows returns ${cows.length} simulated cow entries`)
+    console.log(`GET /cows returns ${cows.length} database-backed cow entries`)
   })
 }
 
-function randomOffset(value, maxDelta) {
-  return value + (Math.random() * 2 - 1) * maxDelta
+async function startServer() {
+  await initializeDatabase()
+  await seedSampleData()
+  await refreshCowState()
+  createHttpServer()
+  createTcpServer()
+  console.log('Backend server started with database-backed cow data. Use a TCP socket to send JSON updates to port', TCP_PORT)
 }
 
-function simulateCowMovement() {
-  cows = cows.map((cow) => ({
-    ...cow,
-    lat: Number(randomOffset(cow.lat, 0.00055).toFixed(6)),
-    lng: Number(randomOffset(cow.lng, 0.00055).toFixed(6)),
-    temp: (37.8 + Math.random() * 1.2).toFixed(1),
-    hb: String(65 + Math.round(Math.random() * 15)),
-  }))
-}
-
-createHttpServer()
-createTcpServer()
-setInterval(simulateCowMovement, 15000)
-console.log('Backend server started with simulated cow data. Use a TCP socket to send JSON updates to port', TCP_PORT)
+startServer().catch((error) => {
+  console.error('Failed to start backend server', error)
+  process.exit(1)
+})

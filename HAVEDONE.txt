@@ -1,0 +1,320 @@
+I’m reviewing the new database and server modules and I’ll walk through each added function in the code directly so you can see what each one does at implementation level.
+
+Below is a detailed code-level explanation of every function I added and how it fits into the new database-backed backend.
+
+1. In index.js
+
+1.1 escapeSqlLiteral(value)
+Purpose:
+- Builds a safe SQL string literal for the in-memory database queries.
+- It prevents SQL syntax issues when values contain quotes or special characters.
+
+What it does:
+- If the value is null or undefined, it returns NULL.
+- If the value is a number or boolean, it returns it as plain text.
+- Otherwise, it wraps the value in single quotes and escapes any embedded single quote by doubling it.
+
+Why it exists:
+- The database layer builds SQL manually, so this helper keeps queries safe and consistent.
+
+Example:
+- "Demo User" becomes 'Demo User'
+- O'Brien becomes 'O''Brien'
+
+1.2 createInMemoryDb()
+Purpose:
+- Creates the in-memory PostgreSQL-compatible database instance.
+
+What it does:
+- Calls newDb() from pg-mem.
+- Exposes the public query API from that database as pg.
+
+Why it exists:
+- This allows the app to behave like it is talking to a real PostgreSQL database, even though the environment does not have a full Postgres server installed.
+
+1.3 splitSqlStatements(sql)
+Purpose:
+- Splits the SQL schema file into individual statements.
+
+What it does:
+- Takes the full schema text from schema.sql
+- Splits it by semicolons
+- Removes empty pieces
+- Returns an array of executable SQL statements
+
+Why it exists:
+- The schema file contains multiple CREATE TABLE statements, and the database engine needs them executed one by one.
+
+1.4 getDb()
+Purpose:
+- Returns the shared database connection object.
+
+What it does:
+- Checks whether a connection already exists.
+- If not, it creates one with createInMemoryDb().
+- Stores it in the closure variable connection.
+
+Why it exists:
+- This prevents recreating the database every time a function needs it.
+
+1.5 initializeDatabase()
+Purpose:
+- Initializes the database schema once.
+
+What it does:
+- Checks whether initialization already happened.
+- Reads the SQL file from schema.sql
+- Executes each SQL statement through the database engine.
+- Marks the database as initialized.
+
+Why it exists:
+- Ensures the tables exist before any seed or read/write operations happen.
+
+1.6 getDemoUserId(pg)
+Purpose:
+- Finds or creates the demo user.
+
+What it does:
+- Tries to select a user by email demo@agronomad.app.
+- If the user already exists, it returns the existing ID.
+- If not, it inserts the user and returns the inserted ID.
+
+Why it exists:
+- The app needs a known user to link animals and yards to.
+
+1.7 seedSampleData()
+Purpose:
+- Seeds the database with a demo user, a yard, and three example animals.
+
+What it does:
+- Calls initializeDatabase() first.
+- Checks whether the demo user already exists.
+- If not, inserts:
+  - the user
+  - a yard named Campo Norte
+- Then inserts three animals:
+  - Lora
+  - Lola
+  - Luna
+- For each animal, it also inserts:
+  - a device
+  - an animal_device link
+  - a GPS position row
+  - a daily statistics row
+
+Why it exists:
+- This gives the system example data so the UI can show animals immediately.
+
+1.8 listAnimals()
+Purpose:
+- Reads all animals belonging to the demo user from the database.
+
+What it does:
+- Calls initializeDatabase() and getDemoUserId().
+- Queries the animals table for all animals tied to the demo user.
+- For each animal, it also queries the latest GPS row for that animal.
+- Builds a simple object for each animal with:
+  - id
+  - name
+  - lat
+  - lng
+  - temp
+  - hb
+
+Why it exists:
+- The server needs a simple array of animals in the format the frontend expects.
+
+1.9 upsertCowSnapshot(payload)
+Purpose:
+- Stores a new incoming cow/GPS update into the database.
+
+What it does:
+- Accepts a payload object representing an animal update.
+- Extracts:
+  - ID
+  - name
+  - latitude
+  - longitude
+  - temperature
+  - heartbeat
+- If the payload is incomplete, it returns null.
+- Checks whether the animal/device already exists for the user.
+- If it exists, it reuses it.
+- If not, it creates:
+  - an animal
+  - a device
+  - an animal_devices link
+- Updates the animal's name if needed.
+- Inserts a new GPS position row with the latest coordinates.
+
+Why it exists:
+- This is the data ingestion point for incoming signals from the collar/device side.
+
+1.10 renameAnimal(id, newName)
+Purpose:
+- Renames an animal in the database.
+
+What it does:
+- Looks for an animal by ID or by its associated device UID.
+- If found, it updates the animal name.
+- Returns the renamed result.
+
+Why it exists:
+- The frontend can rename an animal from the UI and the change should be stored in the database.
+
+2. In server.js
+
+2.1 normalizeCowPayload(raw)
+Purpose:
+- Converts incoming raw data into a normalized cow object.
+
+What it does:
+- Accepts either an object from a socket or a parsed JSON object.
+- Reads the values from multiple possible key names:
+  - ID / id / Id
+  - LAT / lat / latitude
+  - LONG / long / longitude
+  - TEMP / temp / temperature
+  - HB / hb / heart rate fields
+- Validates that an ID and coordinates are present.
+- Returns a cleaned object with:
+  - id
+  - name
+  - lat
+  - lng
+  - temp
+  - hb
+
+Why it exists:
+- The incoming sensor data may have different naming conventions, so this function creates a consistent format.
+
+2.2 refreshCowState()
+Purpose:
+- Reloads the current animals from the database into the in-memory cows array.
+
+What it does:
+- Calls listAnimals().
+- Replaces the local cows array with the DB result.
+
+Why it exists:
+- The server keeps a local snapshot of the latest animals for fast access and for API responses.
+
+2.3 mergeCowData(newCow)
+Purpose:
+- Merges one normalized animal into the local cows array.
+
+What it does:
+- Checks whether the animal already exists in the local array by id.
+- If it exists, it replaces the old entry with the new one.
+- If not, it pushes it into the array.
+
+Why it exists:
+- This lets the server update or append animal records without rebuilding the full list every time.
+
+2.4 normalizeLimitsField(raw)
+Purpose:
+- Normalizes field boundary data from incoming payloads.
+
+What it does:
+- Takes an object that contains groups of boundary points.
+- Reads each group and each point.
+- Converts each point into a lat/lng object.
+- Returns a normalized object of fields and their points.
+
+Why it exists:
+- The app uses boundary/field data on the map, and the incoming payload structure may vary.
+
+2.5 mergeLimitsField(newLimits)
+Purpose:
+- Merges normalized field boundary data into the server’s limitsField object.
+
+What it does:
+- Iterates through the normalized boundary groups.
+- Stores or overwrites each field group in the server state.
+
+Why it exists:
+- This keeps the map boundary data up to date.
+
+2.6 extractJsonObjects(value)
+Purpose:
+- Extracts JSON objects from a raw incoming stream of text.
+
+What it does:
+- Scans the input string character by character.
+- Tracks whether it is inside a JSON string.
+- Tracks brace depth.
+- When a complete JSON object is detected, it pushes it into an array.
+
+Why it exists:
+- Incoming socket data may contain multiple JSON payloads or extra text around them, so this function isolates each message.
+
+2.7 handleIncomingData(rawData)
+Purpose:
+- Processes each incoming socket payload.
+
+What it does:
+- Converts raw bytes to text.
+- Ignores non-JSON traffic.
+- Extracts JSON objects with extractJsonObjects().
+- Parses each chunk.
+- For each parsed item:
+  - normalizes the cow data
+  - stores it with upsertCowSnapshot()
+  - merges it locally with mergeCowData()
+- Also handles limitsField data if present.
+- After processing, refreshes the local cows list from the DB.
+
+Why it exists:
+- This is the main ingestion function for new animal data coming from the devices.
+
+2.8 createTcpServer()
+Purpose:
+- Opens a TCP server socket for incoming device data.
+
+What it does:
+- Creates a net server.
+- Listens for connections.
+- On each socket data event, it checks the payload and calls handleIncomingData().
+- Logs connection and disconnect events.
+
+Why it exists:
+- The system is designed to receive data from collars/devices over TCP.
+
+2.9 createHttpServer()
+Purpose:
+- Creates the HTTP API server.
+
+What it does:
+- Handles:
+  - GET /cows
+  - GET /status
+  - POST /cows/rename
+- For /cows and /status, it refreshes data from the database and returns JSON.
+- For /cows/rename, it parses the request body, calls renameAnimal(), and returns the result.
+
+Why it exists:
+- This exposes the app’s backend API to the frontend.
+
+2.10 startServer()
+Purpose:
+- Starts the full backend.
+
+What it does:
+- Calls initializeDatabase()
+- Calls seedSampleData()
+- Calls refreshCowState()
+- Starts the HTTP and TCP servers
+
+Why it exists:
+- This is the entry point that brings the whole backend to life.
+
+Summary of the architecture
+
+- index.js manages data storage and persistence.
+- server.js manages incoming network data and exposes API endpoints.
+- The frontend keeps using the same /cows and /cows/rename routes, but now they receive data from the database-backed backend instead of the old mock array.
+
+If you want, I can next explain the same thing as a “function-by-function walkthrough” mapping each function to the exact request flow in the app, for example:
+- what happens when the frontend calls /cows
+- what happens when a device sends JSON over TCP
+- what happens when you rename an animal from the UI
