@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS yards (
   id SERIAL PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
-  boundary TEXT,
+  boundary GEOMETRY(POLYGON, 4326),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS devices (
   device_uid TEXT NOT NULL UNIQUE,
   hardware_version TEXT,
   firmware_version TEXT,
-  last_battery_level TEXT,
+  last_battery_level INTEGER,
   last_seen TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -49,10 +49,9 @@ CREATE TABLE IF NOT EXISTS gps_positions (
   animal_id INTEGER NOT NULL REFERENCES animals(id) ON DELETE CASCADE,
   device_id INTEGER REFERENCES devices(id) ON DELETE SET NULL,
   timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-  latitude DOUBLE PRECISION,
-  longitude DOUBLE PRECISION,
-  temperature TEXT,
-  heartbeat TEXT,
+  location GEOGRAPHY(POINT, 4326),
+  temperature DOUBLE PRECISION,
+  heartbeat INTEGER,
   speed DOUBLE PRECISION,
   accuracy DOUBLE PRECISION
 );
@@ -65,3 +64,84 @@ CREATE TABLE IF NOT EXISTS animal_daily_statistics (
   movement_time DOUBLE PRECISION DEFAULT 0,
   sleep_time DOUBLE PRECISION DEFAULT 0
 );
+
+
+
+
+-- =====================================================
+-- GPS POSITION INDEXES
+-- =====================================================
+
+-- Find all positions of an animal quickly
+CREATE INDEX IF NOT EXISTS idx_gps_animal
+ON gps_positions(animal_id);
+
+-- Find positions by date/time quickly
+CREATE INDEX IF NOT EXISTS idx_gps_timestamp
+ON gps_positions(timestamp);
+
+-- Most common query:
+-- animal history ordered by time
+CREATE INDEX IF NOT EXISTS idx_gps_animal_timestamp
+ON gps_positions(animal_id, timestamp DESC);
+
+-- PostGIS spatial index
+CREATE INDEX IF NOT EXISTS idx_gps_location
+ON gps_positions
+USING GIST(location);
+
+
+
+
+
+-- =====================================================
+-- YARD INDEXES
+-- =====================================================
+
+-- Accelerates geofence checks
+CREATE INDEX IF NOT EXISTS idx_yards_boundary
+ON yards
+USING GIST(boundary);
+
+
+
+
+
+-- =====================================================
+-- ANIMAL INDEXES
+-- =====================================================
+
+-- Quickly find all animals in a yard
+CREATE INDEX IF NOT EXISTS idx_animals_yard
+ON animals(yard_id);
+
+-- Quickly find all animals belonging to a user
+CREATE INDEX IF NOT EXISTS idx_animals_user
+ON animals(user_id);
+
+
+
+
+
+
+
+-- =====================================================
+-- DAILY STATISTICS INDEXES
+-- =====================================================
+
+-- Fast lookup of daily stats
+CREATE INDEX IF NOT EXISTS idx_daily_stats_animal_date
+ON animal_daily_statistics(animal_id, date DESC);
+
+
+
+
+
+
+-- =====================================================
+-- DEVICE INDEXES
+-- =====================================================
+
+-- Find all assignments of a device
+CREATE INDEX IF NOT EXISTS idx_animal_devices_device
+ON animal_devices(device_id);

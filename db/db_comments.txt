@@ -1,0 +1,56 @@
+For AgroNomad specifically, I would improve the schema by:
+
+    (X) - Using PostGIS geometries instead of TEXT for yard boundaries.
+
+    (X)- Using a geographic POINT instead of latitude/longitude columns.
+
+        location GEOGRAPHY(POINT, 4326),
+
+            INSERT INTO gps_positions (
+            animal_id,
+            location
+            )
+            VALUES (
+            1,
+            ST_SetSRID(
+                ST_MakePoint(-57.95432, -34.91234),
+                4326
+            )::geography
+            );  
+
+        *POINT(longitude latitude)
+        
+        Capabilities of this:
+
+            Distance traveled:
+
+            SELECT ST_Distance(
+            point1.location,
+            point2.location
+            );
+
+            Check if cow is inside a field:
+
+            SELECT ST_Contains(
+            yard.boundary,
+            gps.location::geometry
+            );
+
+            Nearest cows:
+
+            SELECT *
+            FROM gps_positions
+            ORDER BY location <-> some_point
+            LIMIT 10;
+
+
+
+    (X)- Storing battery level as a numeric value.
+
+    (X) - Making temperature and heartbeat numeric.
+
+    (X) - Adding indexes on GPS timestamps and animal IDs.
+
+        Indexes for faster api responds.
+
+    Considering partitioning gps_positions by month once you have thousands of animals, because GPS data grows extremely fast.

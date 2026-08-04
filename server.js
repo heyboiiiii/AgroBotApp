@@ -5,7 +5,18 @@ import { initializeDatabase, listAnimals, renameAnimal, seedSampleData, upsertCo
 const HTTP_PORT = process.env.PORT ? Number(process.env.PORT) : 4000
 const TCP_PORT = process.env.TCP_PORT ? Number(process.env.TCP_PORT) : 4001
 
+//Here is where the cow data is stored in memory, it will be refreshed from the database on each request to /cows
 let cows = []
+
+
+
+
+
+
+
+
+// Sample limitsField data structure
+// ***THIS HAVE TO GO TO THE DATABASE AND BE MANAGED BY THE USER IN THE FUTURE***
 
 let limitsField = {
   limitsField1: {
@@ -22,11 +33,11 @@ let limitsField = {
   },
 }
 
-//
+
 function normalizeCowPayload(raw) {
   if (!raw || typeof raw !== 'object') return null
 
-  const id = String(raw.ID ?? raw.id ?? raw.Id ?? raw.iD ?? raw.name ?? '').trim()
+  const id = String(raw.ID ?? raw.id ?? raw.Id ?? raw.iD ?? '').trim()
   const lat = Number(raw.LAT ?? raw.lat ?? raw.latitude ?? raw.Lat ?? raw.Latitude)
   const lng = Number(raw.LONG ?? raw.long ?? raw.longitude ?? raw.Long ?? raw.Longitude)
   const temp = raw.TEMP ?? raw.temp ?? raw.temperature ?? raw.Temperature ?? ''
@@ -38,7 +49,7 @@ function normalizeCowPayload(raw) {
 
   return {
     id,
-    name: raw.NAME ?? raw.name ?? `Cow ${id}`,
+    name: raw.NAME ?? raw.name ?? raw.Name ?? `Cow ${id}`,
     lat,
     lng,
     temp: String(temp),
@@ -46,11 +57,12 @@ function normalizeCowPayload(raw) {
   }
 }
 
-//
+// Refresh the in-memory cow state from the database
 async function refreshCowState() {
   cows = await listAnimals()
 }
 
+// Merge new cow data into the in-memory state
 function mergeCowData(newCow) {
   const existingIndex = cows.findIndex((cow) => cow.id === newCow.id)
   if (existingIndex >= 0) {
@@ -93,6 +105,23 @@ function normalizeLimitsField(raw) {
 //
 function mergeLimitsField(newLimits) {
   if (!newLimits || typeof newLimits !== 'object' || Array.isArray(newLimits)) return
+  // object.entries(newLimits) ===> Converts the object into key-value pairs.
+  /*
+    from:
+
+    const newLimits = {
+      latitude: { min: 36, max: 40 },
+      longitude: { min: 0, max: 20 }
+    }
+
+    to:
+
+    [
+      ['latitude', { min: 36, max: 40 }],
+      ['longitude', { min: 0, max: 20 }]
+    ]
+
+  */
 
   Object.entries(newLimits).forEach(([fieldName, fieldValue]) => {
     if (fieldValue && typeof fieldValue === 'object' && !Array.isArray(fieldValue)) {
@@ -152,6 +181,8 @@ function extractJsonObjects(value) {
   return jsonObjects
 }
 
+
+// This function handles incoming raw data, extracts JSON objects, normalizes them, and updates the in-memory state and database accordingly.
 async function handleIncomingData(rawData) {
   const text = rawData.toString('utf8')
   if (!text || (!text.includes('{') && !text.includes('['))) return
@@ -191,6 +222,7 @@ async function handleIncomingData(rawData) {
   await refreshCowState()
 }
 
+//TCP server to receive JSON data from clients and update the in-memory cow state and database
 function createTcpServer() {
   const server = createNetServer((socket) => {
     console.log('TCP client connected from', `${socket.remoteAddress}:${socket.remotePort}`)

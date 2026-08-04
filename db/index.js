@@ -33,6 +33,14 @@ function getSslConfig() {
   return { rejectUnauthorized: false }
 }
 
+/*
+
+  getPoolConfig() -> Looks for a database URL in the environment variables.(process.env) 
+  If found, it uses that URL to configure the connection pool. 
+  Otherwise, it falls back to individual environment variables for host, port, database name, user, and password.
+
+*/
+
 function getPoolConfig() {
   const databaseUrl = process.env.DATABASE_URL?.trim()
 
@@ -53,19 +61,31 @@ function getPoolConfig() {
     user: process.env.PGUSER || 'postgres',
     password: process.env.PGPASSWORD || 'postgres',
     ssl: getSslConfig(),
-    max: Number(process.env.PGPOOL_MAX || 10),
-    idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS || 30000),
-    connectionTimeoutMillis: Number(process.env.PG_CONNECT_TIMEOUT_MS || 10000),
+    max: Number(process.env.PGPOOL_MAX || 10),//Maximum number of clients in the pool
+    idleTimeoutMillis: Number(process.env.PG_IDLE_TIMEOUT_MS || 30000),//Wait for 30 before closing idle clients
+    connectionTimeoutMillis: Number(process.env.PG_CONNECT_TIMEOUT_MS || 10000),//Wait for 10 seconds in connecting
   }
 }
+
+
+/*
+
+  getDb() -> Returns the database connection pool. If the pool hasn't been created yet, it initializes it using getPoolConfig().
+
+*/
 
 export function getDb() {
   if (!pool) {
     pool = new Pool(getPoolConfig())
   }
-
   return pool
 }
+
+/*
+
+  testConnection() -> Tests the database connection by executing a simple query (SELECT NOW()) and returns the current timestamp from the database.
+
+*/
 
 export async function testConnection() {
   const client = await getDb().connect()
@@ -76,6 +96,13 @@ export async function testConnection() {
     client.release()
   }
 }
+
+/*
+
+  initializeDatabase() -> Initializes the database by executing SQL statements from a schema.sql file. 
+  It ensures that the schema is set up correctly before any operations are performed.
+
+*/
 
 export async function initializeDatabase() {
   if (initialized) return getDb()
@@ -100,6 +127,13 @@ export async function initializeDatabase() {
   return getDb()
 }
 
+/*
+
+  getDemoUserId(client) -> Retrieves the ID of the demo user from the database. 
+  If the demo user doesn't exist, it creates one and returns its ID.
+
+*/
+
 async function getDemoUserId(client) {
   const existingUser = await client.query(
     'SELECT id FROM users WHERE email = $1',
@@ -110,6 +144,7 @@ async function getDemoUserId(client) {
     return existingUser.rows[0].id
   }
 
+  //Inserting a demo user if it doesn't exist
   const insertedUser = await client.query(
     `INSERT INTO users (name, email, phone, password_hash)
      VALUES ($1, $2, $3, $4)
@@ -120,8 +155,15 @@ async function getDemoUserId(client) {
   return insertedUser.rows[0].id
 }
 
+/*
+
+  seedSampleData() -> Seeds the database with sample data, including a demo user, a yard, and sample animals with associated devices and GPS positions.
+
+*/
+
 export async function seedSampleData() {
   await initializeDatabase()
+  
   const client = await getDb().connect()
 
   try {
@@ -142,13 +184,17 @@ export async function seedSampleData() {
       yardId = yardInsert.rows[0].id
     }
 
+    //sample animals to seed in DB
     const sampleAnimals = [
       { name: 'Lora', animalType: 'cow', deviceUid: 'COLLAR-01', lat: -34.707652, lng: -58.242300, temp: '38.4', hb: '72' },
       { name: 'Lola', animalType: 'cow', deviceUid: 'COLLAR-02', lat: -34.707546, lng: -58.239348, temp: '38.1', hb: '68' },
       { name: 'Luna', animalType: 'cow', deviceUid: 'COLLAR-03', lat: -34.709948, lng: -58.242870, temp: '38.7', hb: '75' },
     ]
 
+    // this loop checks if the sample animals already exist in the database and inserts them if they don't
+    //  tables: animals, devices, animal_devices, gps_positions, animal_daily_statistics 
     for (const animal of sampleAnimals) {
+      // Check if the animal already exists for this user
       const existingAnimal = await client.query(
         `SELECT a.id
          FROM animals a
@@ -163,6 +209,9 @@ export async function seedSampleData() {
         continue
       }
 
+      // Insert the animal, device, and related records
+      // get the animal id after inserting into animals table
+      // ANIMALS TABLE
       const animalInsert = await client.query(
         `INSERT INTO animals (user_id, yard_id, name, animal_type)
          VALUES ($1, $2, $3, $4)
@@ -170,7 +219,8 @@ export async function seedSampleData() {
         [userId, yardId, animal.name, animal.animalType]
       )
       const animalId = animalInsert.rows[0].id
-
+      
+      //insert into devices table and get the device id
       const deviceInsert = await client.query(
         `INSERT INTO devices (device_uid, hardware_version, firmware_version, last_battery_level, last_seen)
          VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
@@ -179,18 +229,21 @@ export async function seedSampleData() {
       )
       const deviceId = deviceInsert.rows[0].id
 
+      //insert into animal_devices table to link the animal and device
       await client.query(
         `INSERT INTO animal_devices (animal_id, device_id)
          VALUES ($1, $2)`,
         [animalId, deviceId]
       )
 
+      //insert into gps_positions table with the animal's latest GPS data
       await client.query(
         `INSERT INTO gps_positions (animal_id, device_id, timestamp, latitude, longitude, temperature, heartbeat, speed, accuracy)
          VALUES ($1, $2, CURRENT_TIMESTAMP, $3, $4, $5, $6, $7, $8)`,
         [animalId, deviceId, animal.lat, animal.lng, animal.temp, animal.hb, 1.1, 2.5]
       )
 
+      //insert into animal_daily_statistics table with random values for distance_travelled, movement_time, and sleep_time
       await client.query(
         `INSERT INTO animal_daily_statistics (animal_id, date, distance_travelled, movement_time, sleep_time)
          VALUES ($1, CURRENT_DATE, $2, $3, $4)`,
@@ -203,6 +256,12 @@ export async function seedSampleData() {
     client.release()
   }
 }
+
+/*
+
+  listAnimals() -> Retrieves a list of animals for the demo user, including their latest GPS positions and other relevant information.
+
+*/
 
 export async function listAnimals() {
   await initializeDatabase()
@@ -248,14 +307,33 @@ export async function listAnimals() {
   }
 }
 
+/*
+
+  upsertCowSnapshot(payload) -> Inserts or updates a cow's snapshot data based on the provided payload. 
+  It handles creating new animals and devices if they don't already exist.
+
+  Payload structure: {
+    userID: string,
+    ID: string,
+    NAME: string,
+    LAT: number,
+    LONG: number,
+    TEMP: string,
+    HB: string 
+  }
+
+*/
+
 export async function upsertCowSnapshot(payload) {
   await initializeDatabase()
   const client = await getDb().connect()
 
   try {
     const userId = await getDemoUserId(client)
+    
+    //Normalize data
     const id = String(payload.ID ?? payload.id ?? payload.Id ?? '').trim()
-    const name = String(payload.NAME ?? payload.name ?? `Cow ${id}`).trim()
+    const name = String(payload.NAME ?? payload.name ?? payload.Name ?? `Cow ${id}`).trim()
     const lat = Number(payload.LAT ?? payload.lat ?? payload.latitude ?? payload.Latitude)
     const lng = Number(payload.LONG ?? payload.long ?? payload.longitude ?? payload.Longitude)
     const temp = String(payload.TEMP ?? payload.temp ?? payload.temperature ?? payload.Temperature ?? '')
@@ -264,7 +342,8 @@ export async function upsertCowSnapshot(payload) {
     if (!id || Number.isNaN(lat) || Number.isNaN(lng)) {
       return null
     }
-
+    
+    //check if the animal already exists for this user based on the device UID
     const animalLookup = await client.query(
       `SELECT a.id
        FROM animals a
@@ -278,6 +357,8 @@ export async function upsertCowSnapshot(payload) {
     let animalId
     let deviceId
 
+    //if the animal exists, get its ID and the associated device ID; 
+    // otherwise, insert new records into animals and devices tables
     if (animalLookup.rows.length > 0) {
       animalId = animalLookup.rows[0].id
       const deviceLookup = await client.query(
@@ -286,6 +367,10 @@ export async function upsertCowSnapshot(payload) {
       )
       deviceId = deviceLookup.rows[0]?.id
     } else {
+
+      // Insert new animal and device records if they don't exist
+      // Insert into animals table and get the animal ID
+      // *************************REVISE************************************
       const insertedAnimal = await client.query(
         `INSERT INTO animals (user_id, yard_id, name, animal_type)
          VALUES ($1, (SELECT id FROM yards WHERE user_id = $1 LIMIT 1), $2, $3)
@@ -309,8 +394,10 @@ export async function upsertCowSnapshot(payload) {
       )
     }
 
+    //Update the animal's name in the animals table if it has changed
     await client.query('UPDATE animals SET name = $1 WHERE id = $2', [name, animalId])
 
+    // Insert the latest GPS position into the gps_positions table
     await client.query(
       `INSERT INTO gps_positions (animal_id, device_id, timestamp, latitude, longitude, temperature, heartbeat, speed, accuracy)
        VALUES ($1, $2, CURRENT_TIMESTAMP, $3, $4, $5, $6, $7, $8)`,
@@ -322,6 +409,17 @@ export async function upsertCowSnapshot(payload) {
     client.release()
   }
 }
+
+
+/*
+
+  renameAnimal(id, newName) -> Renames an animal based on its ID or device UID. 
+  It updates the animal's name in the database and returns the updated information.
+
+  This function first checks if the animal exists for the demo user based on the provided ID or device UID.
+  If the animal is found, it updates the name in the animals table and returns an object containing the ID and new name.
+  If the animal is not found, it returns null.
+*/
 
 export async function renameAnimal(id, newName) {
   await initializeDatabase()
