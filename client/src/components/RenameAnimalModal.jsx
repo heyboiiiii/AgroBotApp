@@ -1,19 +1,19 @@
 import { useEffect, useState } from 'react'
 
-export default function RenameCowModal({ cow, isOpen, onClose, onConfirm }) {
+export default function RenameAnimalModal({ animal, isOpen, onClose, onConfirm }) {
   const [name, setName] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
-    if (isOpen && cow) {
-      setName(cow.name || '')
+    if (isOpen && animal) {
+      setName(animal.name || '')
       setError('')
       setSubmitting(false)
     }
-  }, [cow, isOpen])
+  }, [animal, isOpen])
 
-  if (!isOpen || !cow) {
+  if (!isOpen || !animal) {
     return null
   }
 
@@ -44,8 +44,8 @@ export default function RenameCowModal({ cow, isOpen, onClose, onConfirm }) {
       <div className="w-full max-w-md rounded-[24px] border border-slate-200 bg-white p-6 shadow-2xl">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h3 className="text-xl font-semibold text-slate-900">Cambiar nombre de la vaca</h3>
-            <p className="mt-1 text-sm text-slate-500">Actualiza el nombre de {cow.name || cow.id}.</p>
+            <h3 className="text-xl font-semibold text-slate-900">Cambiar nombre del animal</h3>
+            <p className="mt-1 text-sm text-slate-500">Actualiza el nombre de {animal.name || animal.id}.</p>
           </div>
           <button
             type="button"
@@ -57,11 +57,11 @@ export default function RenameCowModal({ cow, isOpen, onClose, onConfirm }) {
         </div>
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-          <label className="block text-sm font-medium text-slate-700" htmlFor="cow-name-input">
+          <label className="block text-sm font-medium text-slate-700" htmlFor="animal-name-input">
             Nuevo nombre
           </label>
           <input
-            id="cow-name-input"
+            id="animal-name-input"
             type="text"
             value={name}
             onChange={(event) => setName(event.target.value)}

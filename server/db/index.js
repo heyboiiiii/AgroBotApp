@@ -127,11 +127,261 @@ export async function initializeDatabase() {
   return getDb()
 }
 
+
+
+
+export async function listYards(){
+  await initializeDatabase()
+  const client = await getDb().connect()
+  try{
+    const userID = await getDemoUserId(client)// use Demo user for testing 
+    const result = await client.query(
+          `
+      SELECT
+          id,
+          user_id,
+          name,
+          ST_AsGeoJSON(boundary)::json AS boundary,
+          created_at
+      FROM yards
+      WHERE user_id = $1
+      ORDER BY created_at DESC;
+      `,
+      [userId]
+    );
+    const yards = result.rows;
+    console.log('YARDS DATA:\n'+yards);// for now only show it in the logs
+
+  } finally{
+    client.release();
+  }
+}
+
 /*
 
+  listAnimals() -> Retrieves a list of animals for the demo user, including their latest GPS positions and other relevant information.
+
+*/
+
+export async function listAnimals() {
+  await initializeDatabase()
+  const client = await getDb().connect()
+
+  try {
+    const userId = await getDemoUserId(client)
+    const result = await client.query(
+      `SELECT a.id, a.name, a.animal_type, d.device_uid
+       FROM animals a
+       LEFT JOIN animal_devices ad ON ad.animal_id = a.id AND ad.unassigned_at IS NULL
+       LEFT JOIN devices d ON d.id = ad.device_id
+       WHERE a.user_id = $1
+       ORDER BY a.id`,
+      [userId]
+    )
+
+    const animals = []
+    for (const row of result.rows) {
+      const latestGpsResult = await client.query(
+        `SELECT ST_Y(location::geometry) AS latitude,
+                ST_X(location::geometry) AS longitude,
+                temperature,
+                heartbeat
+         FROM gps_positions
+         WHERE animal_id = $1
+         ORDER BY timestamp DESC
+         LIMIT 1`,
+        [row.id]
+      )
+      const latest = latestGpsResult.rows[0] || {}
+
+      animals.push({
+        id: String(row.device_uid || row.id),
+        name: row.name,
+        lat: Number(latest.latitude ?? 0),
+        lng: Number(latest.longitude ?? 0),
+        temp: String(latest.temperature ?? ''),
+        hb: String(latest.heartbeat ?? ''),
+      })
+    }
+
+    return animals
+  } finally {
+    client.release()
+  }
+}
+
+
+
+
+/*
+
+  upsertAnimalSnapshot(payload) -> Inserts or updates an animal's snapshot data based on the provided payload. 
+  It handles creating new animals and devices if they don't already exist.
+
+  Payload structure: {
+    userID: string,
+    ID: string,
+    NAME: string,
+    LAT: number,
+    LONG: number,
+    TEMP: string,
+    HB: string 
+  }
+
+*/
+
+export async function upsertAnimalSnapshot(payload) {
+  await initializeDatabase()
+  const client = await getDb().connect()
+
+  try {
+    const userId = await getDemoUserId(client)
+    
+    //Normalize data
+    const id = String(payload.ID ?? payload.id ?? payload.Id ?? '').trim()
+    const name = String(payload.NAME ?? payload.name ?? payload.Name ?? `Animal ${id}`).trim()
+    const lat = Number(payload.LAT ?? payload.lat ?? payload.latitude ?? payload.Latitude)
+    const lng = Number(payload.LONG ?? payload.long ?? payload.longitude ?? payload.Longitude)
+    const temp = Number(payload.TEMP ?? payload.temp ?? payload.temperature ?? payload.Temperature ?? 0)
+    const hb = Number(payload.HB ?? payload.hb ?? payload.HeartBeat ?? payload.hbRate ?? payload.heartBeat ?? 0)
+
+    if (!id || Number.isNaN(lat) || Number.isNaN(lng)) {
+      return null
+    }
+    
+    //check if the animal already exists for this user based on the device UID
+    const animalLookup = await client.query(
+      `SELECT a.id
+       FROM animals a
+       JOIN animal_devices ad ON ad.animal_id = a.id
+       JOIN devices d ON d.id = ad.device_id
+       WHERE a.user_id = $1 AND d.device_uid = $2
+       LIMIT 1`,
+      [userId, id]
+    )
+
+    let animalId
+    let deviceId
+
+    //if the animal exists, get its ID and the associated device ID; 
+    // otherwise, insert new records into animals and devices tables
+    if (animalLookup.rows.length > 0) {
+      animalId = animalLookup.rows[0].id
+      const deviceLookup = await client.query(
+        'SELECT d.id FROM devices d WHERE d.device_uid = $1 LIMIT 1',
+        [id]
+      )
+      deviceId = deviceLookup.rows[0]?.id
+    } else {
+
+      // Insert new animal and device records if they don't exist
+      // Insert into animals table and get the animal ID
+      // *************************REVISE************************************
+      const insertedAnimal = await client.query(
+        `INSERT INTO animals (user_id, yard_id, name, animal_type)
+         VALUES ($1, (SELECT id FROM yards WHERE user_id = $1 LIMIT 1), $2, $3)
+         RETURNING id`,
+        [userId, name, 'cattle']
+      )
+      animalId = insertedAnimal.rows[0].id
+
+      const insertedDevice = await client.query(
+        `INSERT INTO devices (device_uid, hardware_version, firmware_version, last_battery_level, last_seen)
+         VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+         RETURNING id`,
+        [id, 'v1.0', '1.2.3', 87]
+      )
+      deviceId = insertedDevice.rows[0].id
+
+      await client.query(
+        `INSERT INTO animal_devices (animal_id, device_id)
+         VALUES ($1, $2)`,
+        [animalId, deviceId]
+      )
+    }
+
+    //Update the animal's name in the animals table if it has changed
+    await client.query('UPDATE animals SET name = $1 WHERE id = $2', [name, animalId])
+
+    // Insert the latest GPS position into the gps_positions table using a PostGIS POINT
+    await client.query(
+      `INSERT INTO gps_positions (animal_id, device_id, timestamp, location, temperature, heartbeat, speed, accuracy)
+       VALUES ($1, $2, CURRENT_TIMESTAMP, ST_SetSRID(ST_MakePoint($3, $4), 4326), $5, $6, $7, $8)`,
+      [animalId, deviceId, lng, lat, temp, hb, 1.1, 2.5]
+    )
+
+    return { id, name, lat, lng, temp: String(temp), hb: String(hb) }
+  } finally {
+    client.release()
+  }
+}
+
+
+/*
+
+  renameAnimal(id, newName) -> Renames an animal based on its ID or device UID. 
+  It updates the animal's name in the database and returns the updated information.
+
+  This function first checks if the animal exists for the demo user based on the provided ID or device UID.
+  If the animal is found, it updates the name in the animals table and returns an object containing the ID and new name.
+  If the animal is not found, it returns null.
+*/
+
+export async function renameAnimal(id, newName) {
+  await initializeDatabase()
+  const client = await getDb().connect()
+
+  try {
+    const userId = await getDemoUserId(client)
+    const animalResult = await client.query(
+      `SELECT a.id
+       FROM animals a
+       LEFT JOIN animal_devices ad ON ad.animal_id = a.id AND ad.unassigned_at IS NULL
+       LEFT JOIN devices d ON d.id = ad.device_id
+       WHERE a.user_id = $1 AND (a.id = $2 OR d.device_uid = $3)
+       LIMIT 1`,
+      [userId, Number(id), String(id)]
+    )
+
+    if (animalResult.rows.length === 0) {
+      return null
+    }
+
+    await client.query('UPDATE animals SET name = $1 WHERE id = $2', [newName, animalResult.rows[0].id])
+    return { id, name: newName }
+  } finally {
+    client.release()
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*
+  -----------------------------------------------------------------------------
   getDemoUserId(client) -> Retrieves the ID of the demo user from the database. 
   If the demo user doesn't exist, it creates one and returns its ID.
-
+  -----------------------------------------------------------------------------
 */
 
 async function getDemoUserId(client) {
@@ -186,9 +436,9 @@ export async function seedSampleData() {
 
     //sample animals to seed in DB
     const sampleAnimals = [
-      { name: 'Lora', animalType: 'cow', deviceUid: 'COLLAR-01', lat: -34.707652, lng: -58.242300, temp: '38.4', hb: '72' },
-      { name: 'Lola', animalType: 'cow', deviceUid: 'COLLAR-02', lat: -34.707546, lng: -58.239348, temp: '38.1', hb: '68' },
-      { name: 'Luna', animalType: 'cow', deviceUid: 'COLLAR-03', lat: -34.709948, lng: -58.242870, temp: '38.7', hb: '75' },
+      { name: 'Lora', animalType: 'cattle', deviceUid: 'COLLAR-01', lat: -34.707652, lng: -58.242300, temp: '38.4', hb: '72' },
+      { name: 'Lola', animalType: 'cattle', deviceUid: 'COLLAR-02', lat: -34.707546, lng: -58.239348, temp: '38.1', hb: '68' },
+      { name: 'Luna', animalType: 'cattle', deviceUid: 'COLLAR-03', lat: -34.709948, lng: -58.242870, temp: '38.7', hb: '75' },
     ]
 
     // this loop checks if the sample animals already exist in the database and inserts them if they don't
@@ -225,7 +475,7 @@ export async function seedSampleData() {
         `INSERT INTO devices (device_uid, hardware_version, firmware_version, last_battery_level, last_seen)
          VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
          RETURNING id`,
-        [animal.deviceUid, 'v1.0', '1.2.3', '87%']
+        [animal.deviceUid, 'v1.0', '1.2.3', 87/*battery level is integer*/]
       )
       const deviceId = deviceInsert.rows[0].id
 
@@ -236,11 +486,11 @@ export async function seedSampleData() {
         [animalId, deviceId]
       )
 
-      //insert into gps_positions table with the animal's latest GPS data
+      // insert into gps_positions table using a PostGIS POINT in the `location` column
       await client.query(
-        `INSERT INTO gps_positions (animal_id, device_id, timestamp, latitude, longitude, temperature, heartbeat, speed, accuracy)
-         VALUES ($1, $2, CURRENT_TIMESTAMP, $3, $4, $5, $6, $7, $8)`,
-        [animalId, deviceId, animal.lat, animal.lng, animal.temp, animal.hb, 1.1, 2.5]
+        `INSERT INTO gps_positions (animal_id, device_id, timestamp, location, temperature, heartbeat, speed, accuracy)
+         VALUES ($1, $2, CURRENT_TIMESTAMP, ST_SetSRID(ST_MakePoint($3, $4), 4326), $5, $6, $7, $8)`,
+        [animalId, deviceId, animal.lng, animal.lat, Number(animal.temp), Number(animal.hb), 1.1, 2.5]
       )
 
       //insert into animal_daily_statistics table with random values for distance_travelled, movement_time, and sleep_time
@@ -252,197 +502,6 @@ export async function seedSampleData() {
     }
 
     return { userId }
-  } finally {
-    client.release()
-  }
-}
-
-/*
-
-  listAnimals() -> Retrieves a list of animals for the demo user, including their latest GPS positions and other relevant information.
-
-*/
-
-export async function listAnimals() {
-  await initializeDatabase()
-  const client = await getDb().connect()
-
-  try {
-    const userId = await getDemoUserId(client)
-    const result = await client.query(
-      `SELECT a.id, a.name, a.animal_type, d.device_uid
-       FROM animals a
-       LEFT JOIN animal_devices ad ON ad.animal_id = a.id AND ad.unassigned_at IS NULL
-       LEFT JOIN devices d ON d.id = ad.device_id
-       WHERE a.user_id = $1
-       ORDER BY a.id`,
-      [userId]
-    )
-
-    const animals = []
-    for (const row of result.rows) {
-      const latestGpsResult = await client.query(
-        `SELECT latitude, longitude, temperature, heartbeat
-         FROM gps_positions
-         WHERE animal_id = $1
-         ORDER BY timestamp DESC
-         LIMIT 1`,
-        [row.id]
-      )
-      const latest = latestGpsResult.rows[0] || {}
-
-      animals.push({
-        id: String(row.device_uid || row.id),
-        name: row.name,
-        lat: Number(latest.latitude ?? 0),
-        lng: Number(latest.longitude ?? 0),
-        temp: String(latest.temperature ?? ''),
-        hb: String(latest.heartbeat ?? ''),
-      })
-    }
-
-    return animals
-  } finally {
-    client.release()
-  }
-}
-
-/*
-
-  upsertCowSnapshot(payload) -> Inserts or updates a cow's snapshot data based on the provided payload. 
-  It handles creating new animals and devices if they don't already exist.
-
-  Payload structure: {
-    userID: string,
-    ID: string,
-    NAME: string,
-    LAT: number,
-    LONG: number,
-    TEMP: string,
-    HB: string 
-  }
-
-*/
-
-export async function upsertCowSnapshot(payload) {
-  await initializeDatabase()
-  const client = await getDb().connect()
-
-  try {
-    const userId = await getDemoUserId(client)
-    
-    //Normalize data
-    const id = String(payload.ID ?? payload.id ?? payload.Id ?? '').trim()
-    const name = String(payload.NAME ?? payload.name ?? payload.Name ?? `Cow ${id}`).trim()
-    const lat = Number(payload.LAT ?? payload.lat ?? payload.latitude ?? payload.Latitude)
-    const lng = Number(payload.LONG ?? payload.long ?? payload.longitude ?? payload.Longitude)
-    const temp = String(payload.TEMP ?? payload.temp ?? payload.temperature ?? payload.Temperature ?? '')
-    const hb = String(payload.HB ?? payload.hb ?? payload.HeartBeat ?? payload.hbRate ?? payload.heartBeat ?? '')
-
-    if (!id || Number.isNaN(lat) || Number.isNaN(lng)) {
-      return null
-    }
-    
-    //check if the animal already exists for this user based on the device UID
-    const animalLookup = await client.query(
-      `SELECT a.id
-       FROM animals a
-       JOIN animal_devices ad ON ad.animal_id = a.id
-       JOIN devices d ON d.id = ad.device_id
-       WHERE a.user_id = $1 AND d.device_uid = $2
-       LIMIT 1`,
-      [userId, id]
-    )
-
-    let animalId
-    let deviceId
-
-    //if the animal exists, get its ID and the associated device ID; 
-    // otherwise, insert new records into animals and devices tables
-    if (animalLookup.rows.length > 0) {
-      animalId = animalLookup.rows[0].id
-      const deviceLookup = await client.query(
-        'SELECT d.id FROM devices d WHERE d.device_uid = $1 LIMIT 1',
-        [id]
-      )
-      deviceId = deviceLookup.rows[0]?.id
-    } else {
-
-      // Insert new animal and device records if they don't exist
-      // Insert into animals table and get the animal ID
-      // *************************REVISE************************************
-      const insertedAnimal = await client.query(
-        `INSERT INTO animals (user_id, yard_id, name, animal_type)
-         VALUES ($1, (SELECT id FROM yards WHERE user_id = $1 LIMIT 1), $2, $3)
-         RETURNING id`,
-        [userId, name, 'cow']
-      )
-      animalId = insertedAnimal.rows[0].id
-
-      const insertedDevice = await client.query(
-        `INSERT INTO devices (device_uid, hardware_version, firmware_version, last_battery_level, last_seen)
-         VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
-         RETURNING id`,
-        [id, 'v1.0', '1.2.3', '87%']
-      )
-      deviceId = insertedDevice.rows[0].id
-
-      await client.query(
-        `INSERT INTO animal_devices (animal_id, device_id)
-         VALUES ($1, $2)`,
-        [animalId, deviceId]
-      )
-    }
-
-    //Update the animal's name in the animals table if it has changed
-    await client.query('UPDATE animals SET name = $1 WHERE id = $2', [name, animalId])
-
-    // Insert the latest GPS position into the gps_positions table
-    await client.query(
-      `INSERT INTO gps_positions (animal_id, device_id, timestamp, latitude, longitude, temperature, heartbeat, speed, accuracy)
-       VALUES ($1, $2, CURRENT_TIMESTAMP, $3, $4, $5, $6, $7, $8)`,
-      [animalId, deviceId, lat, lng, temp, hb, 1.1, 2.5]
-    )
-
-    return { id, name, lat, lng, temp, hb }
-  } finally {
-    client.release()
-  }
-}
-
-
-/*
-
-  renameAnimal(id, newName) -> Renames an animal based on its ID or device UID. 
-  It updates the animal's name in the database and returns the updated information.
-
-  This function first checks if the animal exists for the demo user based on the provided ID or device UID.
-  If the animal is found, it updates the name in the animals table and returns an object containing the ID and new name.
-  If the animal is not found, it returns null.
-*/
-
-export async function renameAnimal(id, newName) {
-  await initializeDatabase()
-  const client = await getDb().connect()
-
-  try {
-    const userId = await getDemoUserId(client)
-    const animalResult = await client.query(
-      `SELECT a.id
-       FROM animals a
-       LEFT JOIN animal_devices ad ON ad.animal_id = a.id AND ad.unassigned_at IS NULL
-       LEFT JOIN devices d ON d.id = ad.device_id
-       WHERE a.user_id = $1 AND (a.id = $2 OR d.device_uid = $3)
-       LIMIT 1`,
-      [userId, Number(id), String(id)]
-    )
-
-    if (animalResult.rows.length === 0) {
-      return null
-    }
-
-    await client.query('UPDATE animals SET name = $1 WHERE id = $2', [newName, animalResult.rows[0].id])
-    return { id, name: newName }
   } finally {
     client.release()
   }

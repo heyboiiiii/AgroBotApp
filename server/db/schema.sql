@@ -103,6 +103,9 @@ CREATE INDEX IF NOT EXISTS idx_yards_boundary
 ON yards
 USING GIST(boundary);
 
+-- Acelerate the search of yards per user_id(NOT ADDED YET TO DB).
+CREATE INDEX IF NOT EXISTS idx_yards_user_id
+ON yards(user_id);
 
 
 

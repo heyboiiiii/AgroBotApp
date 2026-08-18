@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
-import Home from './components/Home'
-import UserConfig from './components/UserConfig'
+import Home from './pages/Home'
+import UserConfig from './pages/UserConfig'
+import Login from './pages/Login'
 import 'leaflet/dist/leaflet.css'
 
 function App() {
   const [currentPath, setCurrentPath] = useState(() => window.location.pathname)
+  const onLoginState = null;
 
   const handleNavigate = (path) => {
     setCurrentPath(path)
@@ -22,6 +24,9 @@ function App() {
 
   if (currentPath === '/userconf') {
     return <UserConfig onNavigate={handleNavigate} />
+  }
+  if(currentPath === '/login'){
+    return <Login onNavigate={handleNavigate,onLoginState}/>
   }
 
   return <Home onNavigate={handleNavigate} />

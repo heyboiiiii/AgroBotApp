@@ -122,3 +122,32 @@ historicPositions:{
     }
 }
 
+
+
+
+
+Dashboard with list of animals(AgroNeck assigned) --> profile for every animal
+            
+            
+Client ===> / --> Check is user is logged(Cookies) -- YES --> returns User Dashboard.
+                                                       NO --> redirect to Login Page.
+
+            /login --> Login Page. (Not used in KIOSK MODE).
+            
+            /home --> Main User Dashboard.
+
+            /user --> User Configuration/Settings Page.
+
+            /animals --> All Animal historical data.
+
+
+            API/endpoints:
+                GET /api/status --> check is the server is running correctly.
+                GET /api/animals --> returns Animals data to user(animaldata + limitsField).
+                GET /api/yards --> returns Limits of the yards(IMPLEMENT *)
+                POST /api/renamecow --> updates the name of a animal.
+
+
+Server ===> TCP Server(localhost:4001) --> receive data from the raspberry zero 2W.
+
+            HTTP Server(localhost:5173) ---> interacts with the user(kiosk mode for deployment inside the AgroBot).

@@ -14,11 +14,11 @@ export default defineConfig({
   ],
   server: {
     proxy: {
-      '/cows': {
+      '/api/cows': {
         target: 'http://localhost:4000',
         changeOrigin: true,
       },
-      '/status': {
+      '/api/status': {
         target: 'http://localhost:4000',
         changeOrigin: true,
       },
@@ -26,7 +26,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src')
-    }
+  '@': path.resolve(import.meta.dirname, './src')
+  }
   }
 })

@@ -1,0 +1,13 @@
+Currently:
+
+    Divide the payload request to work with /api/animals --> to obtain animal data
+                                            /api/yards   --> to obtain yard limits data 
+                                                            create query to obtain limits of yards
+                                                            create new index for db(implement)
+
+                                                            update frontend to wait for the correct payloads.
+
+
+
+Pending:
+

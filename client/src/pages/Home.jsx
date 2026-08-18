@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { MapContainer, TileLayer, CircleMarker, Tooltip, Polyline, useMap } from 'react-leaflet'
-import RenameCowModal from './RenameCowModal'
+import RenameAnimalModal from '../components/RenameAnimalModal'
 
 function FlyToSelected({ position }) {
   const map = useMap()
@@ -63,47 +63,54 @@ function normalizeBoundaryGroups(payload) {
 }
 
 export default function Home({ onNavigate }) {
-  const [cows, setCows] = useState([])
+  const [animals, setAnimals] = useState([])
   const [fieldBoundaries, setFieldBoundaries] = useState([])
-  const [selectedCow, setSelectedCow] = useState(null)
+  const [selectedAnimal, setSelectedAnimal] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [renameModalOpen, setRenameModalOpen] = useState(false)
-  const selectedCowRef = useRef(null)
+  const selectedAnimalRef = useRef(null)
 
+  /*
+    The selectedAnimal state is updated when an animal is clicked on the map, but we also want to keep track of the previously selected animal when the data is refreshed.
+  */
   useEffect(() => {
-    selectedCowRef.current = selectedCow
-  }, [selectedCow])
-
+    selectedAnimalRef.current = selectedAnimal
+  }, [selectedAnimal])
+  /* 
+    The useEffect hook is used to fetch animal data from the server when the component mounts and every 15 seconds thereafter.
+    It also handles loading and error states, and normalizes the data received from the server.
+    The interval is cleared when the component unmounts to prevent memory leaks.
+  */
   useEffect(() => {
     let isMounted = true
 
-    async function loadCowData() {
+    async function loadAnimalData() {
       setLoading(true)
       setError(null)
 
       try {
         
-        const response = await fetch('/cows')
+        const response = await fetch('/api/animals')
         if (!response.ok) {
           throw new Error(`${response.status} ${response.statusText}`)
         }
 
         const data = await response.json()
-        const rawCows = Array.isArray(data)
+        const rawAnimals = Array.isArray(data)
           ? data
-          : Array.isArray(data?.cows)
-            ? data.cows
+          : Array.isArray(data?.animals)
+            ? data.animals
             : []
 
-        if (!Array.isArray(rawCows)) {
+        if (!Array.isArray(rawAnimals)) {
           throw new Error('Invalid data format')
         }
 
-        const normalized = rawCows.map((item) => ({
+        const normalized = rawAnimals.map((item) => ({
           id: String(item.ID || item.id || ''),
-          name: item.NAME || item.name || `Cow ${item.ID || item.id}`,
+          name: item.NAME || item.name || `Animal ${item.ID || item.id}`,
           lat: Number(item.LAT || item.lat || 0),
           lng: Number(item.LONG || item.long || item.lng || 0),
           temp: String(item.TEMP || item.temp || ''),
@@ -112,16 +119,16 @@ export default function Home({ onNavigate }) {
 
         if (!isMounted) return
 
-        const previouslySelectedId = selectedCowRef.current?.id
+        const previouslySelectedId = selectedAnimalRef.current?.id
 
-        setCows(normalized)
+        setAnimals(normalized)
         setFieldBoundaries(normalizeBoundaryGroups(data))
 
         if (normalized.length > 0) {
-          const stillSelected = normalized.find((cow) => cow.id === previouslySelectedId)
-          setSelectedCow(stillSelected || normalized[0])
+          const stillSelected = normalized.find((animal) => animal.id === previouslySelectedId)
+          setSelectedAnimal(stillSelected || normalized[0])
         } else {
-          setSelectedCow(null)
+          setSelectedAnimal(null)
         }
 
         setLoading(false)
@@ -133,9 +140,13 @@ export default function Home({ onNavigate }) {
       }
     }
 
-    loadCowData()
+    loadAnimalData()
    
-    const interval = setInterval(loadCowData, 15000)// Refresh data every 15 seconds(Change later to 5 minutes for production)
+    const interval = setInterval(loadAnimalData, 15000)// Refresh data every 15 seconds
+    /*
+     Later we have to implement a websocket connection to receive real-time updates from the server, 
+     instead of polling every 15 seconds. This will improve performance and reduce server load.
+    */
 
     return () => {
       isMounted = false
@@ -157,15 +168,20 @@ export default function Home({ onNavigate }) {
     setMenuOpen(false)
   }
 
-  const handleRenameCow = async (newName) => {
-    if (!selectedCow) {
-      throw new Error('No hay una vaca seleccionada.')
+
+
+  /*
+    Handle renaming an animal by sending a request to the server and updating the local state accordingly.
+  */
+  const handleRenameAnimal = async (newName) => {
+    if (!selectedAnimal) {
+      throw new Error('No hay un animal seleccionado.')
     }
 
-    const response = await fetch('/cows/rename', {
+    const response = await fetch('/api/animals/rename', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: selectedCow.id, name: newName }),
+      body: JSON.stringify({ id: selectedAnimal.id, name: newName }),
     })
 
     if (!response.ok) {
@@ -177,11 +193,13 @@ export default function Home({ onNavigate }) {
       throw new Error('El servidor no confirmó el cambio.')
     }
 
-    setCows((prevCows) =>
-      prevCows.map((cow) => (cow.id === selectedCow.id ? { ...cow, name: newName } : cow))
+    //Update view for the user 
+
+    setAnimals((prevAnimals) =>
+      prevAnimals.map((animal) => (animal.id === selectedAnimal.id ? { ...animal, name: newName } : animal))
     )
-    setSelectedCow((prevSelected) =>
-      prevSelected && prevSelected.id === selectedCow.id ? { ...prevSelected, name: newName } : prevSelected
+    setSelectedAnimal((prevSelected) =>
+      prevSelected && prevSelected.id === selectedAnimal.id ? { ...prevSelected, name: newName } : prevSelected
     )
   }
 
@@ -197,18 +215,18 @@ export default function Home({ onNavigate }) {
 
 
 
-  // Determine the map's center position based on the selected cow or default to the first cow  
+  // Determine the map's center position based on the selected animal or default to the first animal  
   const mapPosition = useMemo(() => {
-    if (selectedCow?.lat && selectedCow?.lng) {
-      // If a cow is selected, center the map on that cow's position
-      return [selectedCow.lat, selectedCow.lng]
+    if (selectedAnimal?.lat && selectedAnimal?.lng) {
+      // If an animal is selected, center the map on that animal's position
+      return [selectedAnimal.lat, selectedAnimal.lng]
     }
-    if (cows.length > 0) {
-      // If no cow is selected, default to the first cow's position
-      return [cows[0].lat, cows[0].lng]
+    if (animals.length > 0) {
+      // If no animal is selected, default to the first animal's position
+      return [animals[0].lat, animals[0].lng]
     }
-    return [51.505, -0.09] // Default position (London) if no cows are available
-  }, [selectedCow, cows])
+    return [51.505, -0.09] // Default position (London) if no animals are available
+  }, [selectedAnimal, animals])
 
 
 
@@ -284,14 +302,14 @@ export default function Home({ onNavigate }) {
               
               <div>
                 <h2 className="text-2xl font-semibold">Mapa</h2>
-                <p className="mt-1 text-sm text-slate-500">Toca una vaca para ver sus detalles.</p>
+                <p className="mt-1 text-sm text-slate-500">Toca un animal para ver sus detalles.</p>
               </div>
 
               <div className="flex items-center justify-between gap-3 rounded-2xl bg-slate-100 px-4 py-3 text-sm text-slate-700">
                 <span>
                   {loading && 'Cargando...'}
 
-                  {!loading && !error && `${cows.length} animales detectados`}
+                  {!loading && !error && `${animals.length} animales detectados`}
                   
                   {error && `Error: ${error}`}
                 </span>
@@ -305,8 +323,8 @@ export default function Home({ onNavigate }) {
               <div className="flex items-center justify-between gap-3 rounded-2xl bg-slate-100 px-4 py-3 text-sm text-slate-700">
                 
                 <span>
-                  {!loading && !error && selectedCow ? (
-                    <>Animal seleccionado <strong> {selectedCow.name}(ID:{selectedCow.id})</strong></>
+                  {!loading && !error && selectedAnimal ? (
+                    <>Animal seleccionado <strong> {selectedAnimal.name}(ID:{selectedAnimal.id})</strong></>
                   ) : (
                     'Ningun animal seleccionado.'
                   )}
@@ -349,13 +367,13 @@ export default function Home({ onNavigate }) {
                   </Polyline>
                 ))}
 
-                {cows.map((cow) => {
-                  const isSelected = cow.id === selectedCow?.id
+                {animals.map((animal) => {
+                  const isSelected = animal.id === selectedAnimal?.id
 
                   return (
                     <CircleMarker
-                      key={cow.id}
-                      center={[cow.lat, cow.lng]}
+                      key={animal.id}
+                      center={[animal.lat, animal.lng]}
                       radius={7}
                       //Circle marker function works weel when styles are passed via pathOptions, 
                       // but if you use style prop it doesn't work, so we use pathOptions instead of style
@@ -365,10 +383,10 @@ export default function Home({ onNavigate }) {
                       weight: isSelected ? 3 : 2,
                       fillOpacity: 0.95,
                     }}
-                      eventHandlers={{ click: () => setSelectedCow(cow) }}
+                      eventHandlers={{ click: () => setSelectedAnimal(animal) }}
                     >
-                      {/* Show the cow's name in a tooltip when hovering over the marker */}
-                      <Tooltip>{cow.name}</Tooltip>
+                      {/* Show the animal's name in a tooltip when hovering over the marker */}
+                      <Tooltip>{animal.name}</Tooltip>
                     </CircleMarker>
                   )
                 })}
@@ -376,14 +394,14 @@ export default function Home({ onNavigate }) {
             </div>
           </div>
 
-          {/* Overview and selected cow details */}
+          {/* Overview and selected animal details */}
           <div className="grid gap-6 xl:grid-cols-[1.5fr_0.9fr]">
             <div id="overview-section" className="rounded-[28px] border border-green-200 bg-white p-6 shadow-sm">
               <h3 className="text-xl font-semibold">Visión general</h3>
               <div className="mt-5 grid gap-4 sm:grid-cols-2">
                 <div className="rounded-3xl bg-slate-100 p-5">
-                  <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Total de vacas</p>
-                  <p className="mt-2 text-1xl font-semibold text-slate-900">{cows.length}</p>
+                  <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Total de animales</p>
+                  <p className="mt-2 text-1xl font-semibold text-slate-900">{animals.length}</p>
                 </div>
                 <div className="rounded-3xl bg-slate-100 p-5">
                   <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Estado</p>
@@ -392,17 +410,17 @@ export default function Home({ onNavigate }) {
               </div>
             </div>
             
-            {/* Selected cow details */}
+            {/* Selected animal details */}
             <aside className="space-y-6">
               <div id="details-section" className="rounded-[28px] border border-green-200 bg-white p-6 shadow-sm">
                 <h3 className="text-xl font-semibold">Animal selecionado</h3>
                 <div className="mt-4 space-y-3">
-                  {selectedCow ? (
+                  {selectedAnimal ? (
                     <div className="space-y-3">
                       
                       <div className="rounded-3xl bg-slate-100 p-4">
                         <p className="text-sm text-slate-500">ID(identificador unico de collar)</p>
-                        <p className="mt-1 text-lg font-semibold">{selectedCow.id}</p>
+                        <p className="mt-1 text-lg font-semibold">{selectedAnimal.id}</p>
                       </div>
                       
                       <div className="rounded-3xl bg-slate-100 p-4">
@@ -411,8 +429,8 @@ export default function Home({ onNavigate }) {
                         
                         
                         <div className="mt-2 flex items-center justify-between gap-2">
-                          <p className="mt-1 text-lg font-semibold">{selectedCow.name}</p>
-                          {/* Button to edit name of cow*/}
+                          <p className="mt-1 text-lg font-semibold">{selectedAnimal.name}</p>
+                          {/* Button to edit name of animal*/}
                           <button
                             type="button"
                             onClick={() => setRenameModalOpen(true)}
@@ -422,11 +440,11 @@ export default function Home({ onNavigate }) {
                           </button>
                         </div>
                       </div>
-                      {/* Show the cow's temperature and position 
+                      {/* Show the animal's temperature and position 
                       
                       <div className="rounded-3xl bg-slate-100 p-4">
                         <p className="text-sm  text-slate-500">Temperatura</p>
-                        <p className="mt-1 text-lg font-semibold">{selectedCow.temp || '—'}</p>
+                        <p className="mt-1 text-lg font-semibold">{selectedAnimal.temp || '—'}</p>
                       </div>
                       
                       */}
@@ -439,15 +457,15 @@ export default function Home({ onNavigate }) {
                         
                           <div>
                             <p className="mt-1 text-sm font-mono mb-2">Buenos Aires, Argentina</p>
-                            <p className="mt-1 text-sm font-mono">Latitud: {selectedCow.lat.toFixed(5)}</p>
-                            <p className="mt-1 text-sm font-mono"> Longitud: {selectedCow.lng.toFixed(5)}</p>
+                            <p className="mt-1 text-sm font-mono">Latitud: {selectedAnimal.lat.toFixed(5)}</p>
+                            <p className="mt-1 text-sm font-mono"> Longitud: {selectedAnimal.lng.toFixed(5)}</p>
                           </div>
 
                           {/* button to copy coordenates to clipboard */}
                           <button
                             type="button"
                             onClick={() => {
-                              navigator.clipboard.writeText(`Latitud: ${selectedCow.lat.toFixed(5)}, Longitud: ${selectedCow.lng.toFixed(5)}`)
+                              navigator.clipboard.writeText(`Latitud: ${selectedAnimal.lat.toFixed(5)}, Longitud: ${selectedAnimal.lng.toFixed(5)}`)
                               alert('Coordenadas copiadas al portapapeles')
                             }}
                             className="mt-2 rounded-full bg-emerald-600 px-3 py-1 text-sm font-medium text-white transition hover:bg-emerald-700"
@@ -460,7 +478,7 @@ export default function Home({ onNavigate }) {
                         <div className="mt-5 flex items-center justify-center rounded-3xl bg-emerald-600 p-4">
                           <button
                             type="button"
-                            onClick={() => onNavigate?.(`/history/${selectedCow.id}`)}
+                            onClick={() => onNavigate?.(`/history/${selectedAnimal.id}`)}
                             className="rounded-md px-3 py-1.5 text-m font-semibold text-emerald-50 transition-colors"
                           >
                             Ver trayecto historico
@@ -481,11 +499,11 @@ export default function Home({ onNavigate }) {
         </div>
       </section>
 
-      <RenameCowModal
-        cow={selectedCow}
+      <RenameAnimalModal
+        animal={selectedAnimal}
         isOpen={renameModalOpen}
         onClose={() => setRenameModalOpen(false)}
-        onConfirm={handleRenameCow}
+        onConfirm={handleRenameAnimal}
       />
     </div>
   )
