@@ -110,7 +110,7 @@ export async function initializeDatabase() {
   const schemaSql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8')
   const client = await getDb().connect()
 
-  try {
+    try {
     await client.query('BEGIN')
     for (const statement of splitSqlStatements(schemaSql)) {
       await client.query(statement)
@@ -152,6 +152,23 @@ export async function listYards(){
     const yards = result.rows;
     console.log('YARDS DATA:\n'+yards);// for now only show it in the logs
 
+
+
+    let limitsField = {
+      limitsField1: {
+        limit1: { lat: -34.712444, lng: -58.243586 },
+        limit2: { lat: -34.707743, lng: -58.237085 },
+        limit3: { lat: -34.701257, lng: -58.245205 },
+        limit4: { lat: -34.706142, lng: -58.253289 },
+      },
+      LimitsField2: {
+        limit1: { lat: -34.702611, lng: -58.256803 },
+        limit2: { lat: -34.698916, lng: -58.249276 },
+        limit3: { lat: -34.701257, lng: -58.245205 },
+        limit4: { lat: -34.706142, lng: -58.253289 },
+      },
+}
+    return(limitsField);
   } finally{
     client.release();
   }

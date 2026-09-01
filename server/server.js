@@ -31,7 +31,7 @@ let limitsField = {
   },
 }
 
-
+// Refresh the in-memory yard limits from the db
 async function refreshYardState(){
   limitsField = await listYards()
 }
@@ -245,7 +245,7 @@ function createHttpServer() {
     if (req.method === 'GET' && url.pathname === '/api/yards') {
       void (async () => {
         try {
-          //await refreshAnimalState()
+          await refreshYardState()
           const payload = JSON.stringify({ limitsField })// only send yards limits data
           res.writeHead(200, {
             'Content-Type': 'application/json',
@@ -352,8 +352,10 @@ async function startServer() {
   await initializeDatabase()
   await seedSampleData()
   await refreshAnimalState()
+  
   createHttpServer()
   createTcpServer()
+  
   console.log('Backend server started with database-backed animal data. Use a TCP socket to send JSON updates to port', TCP_PORT)
 }
 
