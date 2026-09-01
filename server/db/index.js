@@ -130,47 +130,111 @@ export async function initializeDatabase() {
 
 
 
-export async function listYards(){
+function polygonToLimitMap(name, polygonGeoJson) {
+  if (!polygonGeoJson || typeof polygonGeoJson !== 'object' || !Array.isArray(polygonGeoJson.coordinates)) {
+    return null
+  }
+
+  const ring = polygonGeoJson.coordinates[0]
+  if (!Array.isArray(ring) || ring.length === 0) {
+    return null
+  }
+
+  const compactRing =
+    ring.length > 0 &&
+    ring[0][0] === ring[ring.length - 1][0] &&
+    ring[0][1] === ring[ring.length - 1][1]
+      ? ring.slice(0, -1)
+      : ring
+
+  const points = {}
+
+  compactRing.forEach(([lng, lat], index) => {
+    const parsedLat = Number(lat)
+    const parsedLng = Number(lng)
+
+    if (Number.isNaN(parsedLat) || Number.isNaN(parsedLng)) {
+      return
+    }
+
+    points[`limit${index + 1}`] = { lat: parsedLat, lng: parsedLng }
+  })
+
+  if (Object.keys(points).length === 0) {
+    return null
+  }
+
+  return { [name]: points }
+}
+
+async function ensureDefaultYards(client, userId) {
+  const existing = await client.query(
+    `SELECT name FROM yards WHERE user_id = $1`,
+    [userId]
+  )
+
+  const existingNames = new Set(existing.rows.map((row) => row.name))
+
+  const defaults = [
+    {
+      name: 'limitsField1',
+      polygon: 'POLYGON((-58.253289 -34.712444, -58.237085 -34.707743, -58.245205 -34.701257, -58.253289 -34.706142, -58.253289 -34.712444))',
+    },
+    {
+      name: 'LimitsField2',
+      polygon: 'POLYGON((-58.256803 -34.702611, -58.249276 -34.698916, -58.245205 -34.701257, -58.253289 -34.706142, -58.256803 -34.702611))',
+    },
+  ]
+
+  for (const yard of defaults) {
+    if (!existingNames.has(yard.name)) {
+      await client.query(
+        `INSERT INTO yards (user_id, name, boundary)
+         VALUES ($1, $2, ST_GeomFromText($3, 4326))`,
+        [userId, yard.name, yard.polygon]
+      )
+    }
+  }
+}
+
+export async function listYards() {
   await initializeDatabase()
   const client = await getDb().connect()
-  try{
-    const userID = await getDemoUserId(client)// use Demo user for testing 
+
+  try {
+    const userId = await getDemoUserId(client)
+    await ensureDefaultYards(client, userId)
+
     const result = await client.query(
-          `
+      `
       SELECT
-          id,
-          user_id,
-          name,
-          ST_AsGeoJSON(boundary)::json AS boundary,
-          created_at
+        id,
+        user_id,
+        name,
+        ST_AsGeoJSON(boundary)::json AS boundary,
+        created_at
       FROM yards
       WHERE user_id = $1
       ORDER BY created_at DESC;
       `,
       [userId]
-    );
-    const yards = result.rows;
-    console.log('YARDS DATA:\n'+yards);// for now only show it in the logs
+    )
 
+    const limitsField = {}
 
+    for (const yard of result.rows) {
+      const parsedBoundary =
+        typeof yard.boundary === 'string' ? JSON.parse(yard.boundary) : yard.boundary
 
-    let limitsField = {
-      limitsField1: {
-        limit1: { lat: -34.712444, lng: -58.243586 },
-        limit2: { lat: -34.707743, lng: -58.237085 },
-        limit3: { lat: -34.701257, lng: -58.245205 },
-        limit4: { lat: -34.706142, lng: -58.253289 },
-      },
-      LimitsField2: {
-        limit1: { lat: -34.702611, lng: -58.256803 },
-        limit2: { lat: -34.698916, lng: -58.249276 },
-        limit3: { lat: -34.701257, lng: -58.245205 },
-        limit4: { lat: -34.706142, lng: -58.253289 },
-      },
-}
-    return(limitsField);
-  } finally{
-    client.release();
+      const mapped = polygonToLimitMap(yard.name, parsedBoundary)
+      if (mapped) {
+        Object.assign(limitsField, mapped)
+      }
+    }
+
+    return limitsField
+  } finally {
+    client.release()
   }
 }
 
@@ -435,6 +499,7 @@ export async function seedSampleData() {
 
   try {
     const userId = await getDemoUserId(client)
+    await ensureDefaultYards(client, userId)
 
     const existingYard = await client.query('SELECT id FROM yards WHERE user_id = $1 LIMIT 1', [userId])
     let yardId

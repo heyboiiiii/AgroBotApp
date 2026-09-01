@@ -1,7 +1,7 @@
 import { createServer } from 'http'
 import { createServer as createNetServer } from 'net'
 
-import { initializeDatabase, listAnimals, renameAnimal, seedSampleData, upsertAnimalSnapshot } from './db/index.js'
+import { initializeDatabase, listAnimals, listYards, renameAnimal, seedSampleData, upsertAnimalSnapshot } from './db/index.js'
 import { normalizeAnimalPayload, normalizeLimitsField, mergeLimitsField, extractJsonObjects } from './utils/utils.js'
 
 import 'dotenv/config'
@@ -12,29 +12,14 @@ const TCP_PORT = process.env.TCP_PORT ? Number(process.env.TCP_PORT) : 4001
 // Here is where the animal data is stored in memory, refreshed from the database on each request to /api/animals
 let animals = []
 
-
-// Sample limitsField data structure
-// ***THIS HAVE TO GO TO THE DATABASE AND BE MANAGED BY THE USER IN THE FUTURE***
-
-let limitsField = {
-  limitsField1: {
-    limit1: { lat: -34.712444, lng: -58.243586 },
-    limit2: { lat: -34.707743, lng: -58.237085 },
-    limit3: { lat: -34.701257, lng: -58.245205 },
-    limit4: { lat: -34.706142, lng: -58.253289 },
-  },
-  LimitsField2: {
-    limit1: { lat: -34.702611, lng: -58.256803 },
-    limit2: { lat: -34.698916, lng: -58.249276 },
-    limit3: { lat: -34.701257, lng: -58.245205 },
-    limit4: { lat: -34.706142, lng: -58.253289 },
-  },
-}
+// Yard limits are loaded from the database; no hardcoded sample data here.
+let limitsField = {}
 
 // Refresh the in-memory yard limits from the db
-async function refreshYardState(){
+async function refreshYardState() {
   limitsField = await listYards()
 }
+
 // Refresh the in-memory animal state from the database
 async function refreshAnimalState() {
   animals = await listAnimals()
@@ -352,6 +337,7 @@ async function startServer() {
   await initializeDatabase()
   await seedSampleData()
   await refreshAnimalState()
+  await refreshYardState()
   
   createHttpServer()
   createTcpServer()
