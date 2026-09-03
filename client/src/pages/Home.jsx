@@ -63,14 +63,75 @@ function normalizeBoundaryGroups(payload) {
 }
 
 export default function Home({ onNavigate }) {
+  /*
+    # Object with data of each animal (coming from server -> /api/animals).
+    # Including id, name, lat, lng, temp, hb.
+    # Example(data from server):
+      {"animals": 
+        [ 
+          {
+            "id":"COLLAR-01",
+            "name":"Lora",
+            "lat":-34.707652,
+            "lng":-58.2423,
+            "temp":"38.4",
+            "hb":"72"
+          },
+          {
+            "id":"COLLAR-02",
+            "name":"Lola",
+            "lat":-34.707546,
+            "lng":-58.239348,
+            "temp":"38.1",
+            "hb":"68"
+          },
+          {
+            "id":"COLLAR-03",
+            "name":"Luna",
+            "lat":-34.709948,
+            "lng":-58.24287,
+            "temp":"38.7",
+            "hb":"75"
+          }
+        ]
+      }
+  */
   const [animals, setAnimals] = useState([])
-  const [fieldBoundaries, setFieldBoundaries] = useState([])
+  /*
+    # Object with data of boundaries for each yard which the user has(coming from the server -> /api/yards).
+    # Including name and positions(array of lat,lng).
+    # Example(data from server):
+      {"limitsField":
+        {
+        "LimitsField2":
+          {
+          "limit1":{"lat":-34.702611,"lng":-58.256803},
+          "limit2":{"lat":-34.698916,"lng":-58.249276},
+          "limit3":{"lat":-34.701257,"lng":-58.245205},
+          "limit4":{"lat":-34.706142,"lng":-58.253289}
+          },
+        "limitsField1":
+          {
+          "limit1":{"lat":-34.712444,"lng":-58.253289},
+          "limit2":{"lat":-34.707743,"lng":-58.237085},
+          "limit3":{"lat":-34.701257,"lng":-58.245205},
+          "limit4":{"lat":-34.706142,"lng":-58.253289}
+          }
+        }
+      }
+  */
+  const [yardBoundaries, setyardBoundaries] = useState([])
+  
+  // State which stores which animal is selected to be zoom in the map.
   const [selectedAnimal, setSelectedAnimal] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [menuOpen, setMenuOpen] = useState(false)
-  const [renameModalOpen, setRenameModalOpen] = useState(false)
-  const selectedAnimalRef = useRef(null)
+
+  const [loading, setLoading] = useState(true)// State to show 'loading' to user.
+  const [error, setError] = useState(null)// State to show 'error' to user.
+  
+  const [menuOpen, setMenuOpen] = useState(false)// Menu open/close.
+  const [renameModalOpen, setRenameModalOpen] = useState(false)// Rename animal modal open/close.
+  
+  const selectedAnimalRef = useRef(null)// 
 
   /*
     The selectedAnimal state is updated when an animal is clicked on the map, but we also want to keep track of the previously selected animal when the data is refreshed.
@@ -122,7 +183,7 @@ export default function Home({ onNavigate }) {
         const previouslySelectedId = selectedAnimalRef.current?.id
 
         setAnimals(normalized)
-        setFieldBoundaries(normalizeBoundaryGroups(data))
+        setyardBoundaries(normalizeBoundaryGroups(data))
 
         if (normalized.length > 0) {
           const stillSelected = normalized.find((animal) => animal.id === previouslySelectedId)
@@ -357,7 +418,7 @@ export default function Home({ onNavigate }) {
                 />
                 <FlyToSelected position={mapPosition} />
 
-                {fieldBoundaries.map((boundary) => (
+                {yardBoundaries.map((boundary) => (
                   <Polyline
                     key={boundary.name}
                     positions={boundary.positions}
