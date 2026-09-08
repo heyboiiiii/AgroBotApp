@@ -14,7 +14,7 @@
 
 
 /**
- * Data send by every AgroNeck ---> {
+ * Data sent by every AgroNeck ---> {
  *      DEVICE_ID
  *      FIRMWARE_VERS
  *      HARDWARE_VERS
