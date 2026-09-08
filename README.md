@@ -1,10 +1,8 @@
-# AgroNomad / AgroBotApp - Resumen del proyecto
+# AgroBotApp
 
 ## 1. Objetivo
 
-AgroNomad es una aplicación para monitorear animales mediante collares con GPS y sensores. El sistema de AgroBot recibe datos desde los AgroNeck, los guarda en PostgreSQL con PostGIS y los muestra en un dashboard web.
-
-El proyecto actual funciona principalmente como un prototipo/MVP. Tiene implementada la recepción de posiciones, el almacenamiento de animales y campos, la visualización en un mapa y el cambio de nombre de los animales. Algunas funciones descriptas en los documentos todavía están planificadas, pero no implementadas.
+El código del AgroBot recibe datos desde los AgroNeck, los guarda en PostgreSQL con PostGIS y los muestra en un dashboard web. Este código tiene implementado la recepción de posiciones, el almacenamiento de animales y campos, la visualización en un mapa y el cambio de nombre de los animales. Algunas funciones descriptas en el todavía están planificadas, pero no implementadas.
 
 ## 2. Arquitectura general
 
