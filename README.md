@@ -395,7 +395,7 @@ Usa la instancia del mapa para centrarlo suavemente en la posicion seleccionada.
 
 Muestra formulario de email y contraseña y envia `POST /api/login`. Sin embargo, el backend actual no implementa esa ruta ni una autenticacion real.
 
-## 10. Lo implementado actualmente
+## 10. Resumen de lo implementado actualmente
 
 - Recepcion TCP de payloads JSON.
 - Persistencia de animales, dispositivos y posiciones GPS.
@@ -406,7 +406,7 @@ Muestra formulario de email y contraseña y envia `POST /api/login`. Sin embargo
 - Actualizacion periodica de animales cada 15 segundos.
 - Reconexion basica del cliente C cuando se pierde el socket.
 
-## 11. Pendientes y diferencias con la documentacion
+## 11. Lista de pendientes
 
 Estas funciones aparecen en los documentos de planificacion, pero no estan terminadas en el codigo actual:
 
@@ -423,33 +423,3 @@ Estas funciones aparecen en los documentos de planificacion, pero no estan termi
 11. Agregar limites de tamaño y validacion mas robusta para mensajes TCP.
 12. Revisar el manejo de errores de operaciones asincronas del socket.
 13. Agregar backups automaticos y almacenamiento de telemetria si el volumen crece.
-
-## 12. Archivos de documentacion existentes
-
-- `PROCESS.txt`: tareas y flujo de trabajo inicial.
-- `UI.txt`: objetivos de interfaz, mapa, historial, menu y endpoints previstos.
-- `DB.txt`: diseño conceptual de PostgreSQL, PostGIS, historial y backups.
-- `IMPLEMENTATION_POINT_1.md`: detalle tecnico de la persistencia de campos.
-- `POINT_1_SUMMARY.md`: resumen visual del Point 1.
-- `COMPLETION_POINT_1.md`: declaracion de finalizacion del Point 1.
-
-Los tres documentos del Point 1 describen esencialmente el mismo cambio: reemplazar limites hardcodeados en memoria por campos persistidos en PostgreSQL.
-
-## 13. Resumen final
-
-El nucleo funcional es:
-
-```text
-main.c
-  -> TCP / 4001
-server.js
-  -> normalizacion y API HTTP
-index.js
-  -> PostgreSQL/PostGIS
-schema.sql
-  -> estructura e indices
-Home.jsx
-  -> mapa y estado de los animales
-```
-
-La aplicacion ya tiene una base funcional para monitoreo GPS. Lo que falta para acercarse al diseño completo es principalmente autenticacion, historiales, geocercas/alertas, telemetria completa del dispositivo y una separacion mas clara entre datos demo y produccion.
