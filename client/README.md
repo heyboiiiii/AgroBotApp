@@ -12,10 +12,6 @@ Objectives:
 
     Temperature
 
-    Heart beat 
-
-    Battery capacity
-
 
 *Data displayed to User:
 
@@ -28,8 +24,5 @@ Objectives:
     2 - Name asigned
 
     3 - Temperature 
-
-    4 - Heart Beat
-
 
 

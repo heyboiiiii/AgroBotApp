@@ -7,11 +7,10 @@ export function normalizeAnimalPayload(raw) {
   const lat = Number(raw.LAT ?? raw.lat ?? raw.latitude ?? raw.Lat ?? raw.Latitude)
   const lng = Number(raw.LONG ?? raw.long ?? raw.longitude ?? raw.Long ?? raw.Longitude)
   const temp = raw.TEMP ?? raw.temp ?? raw.temperature ?? raw.Temperature ?? ''
-  const hb = raw.HB ?? raw.hb ?? raw.HeartBeat ?? raw.hbRate ?? raw.heartBeat ?? ''
 
   if (!id || Number.isNaN(lat) || Number.isNaN(lng)) return null
 
-  return { id, name: raw.NAME ?? raw.name ?? raw.Name ?? `Animal ${id}`, lat, lng, temp: String(temp), hb: String(hb) }
+  return { id, name: raw.NAME ?? raw.name ?? raw.Name ?? `Animal ${id}`, lat, lng, temp: String(temp) }
 }
 
 export function extractJsonPayloads(buffer) {

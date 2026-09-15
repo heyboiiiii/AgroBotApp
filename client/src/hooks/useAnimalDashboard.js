@@ -89,7 +89,6 @@ export default function useAnimalDashboard() {
           lat: Number(item.LAT || item.lat || 0),
           lng: Number(item.LONG || item.long || item.lng || 0),
           temp: String(item.TEMP || item.temp || ''),
-          hb: String(item.HB || item.hb || ''),
         }))
 
         if (!isMounted) {
