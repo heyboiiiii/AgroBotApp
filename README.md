@@ -27,10 +27,12 @@ Frontend React + Leaflet
 |Componente|Responsabilidad|
 |---|---|
 | `firmware_example/main.c`| Simula un collar que envia datos por TCP.|
+|-----|-----|
 | `server/server.js`| Recibe TCP, procesa mensajes y expone la API HTTP.|
 | `server/db/index.js`| Conecta con PostgreSQL y ejecuta las operaciones de base de datos.|
+| `server/utils/utils.js`| Normaliza payloads y extrae objetos JSON recibidos por TCP.| 
 | `server/db/schema.sql`| Define tablas, relaciones e indices de PostgreSQL/PostGIS.|
-| `server/utils/utils.js`| Normaliza payloads y extrae objetos JSON recibidos por TCP.|
+|-----|-----|
 | `client/src/App.jsx`| Controla la navegacion basica del frontend.|
 | `client/src/pages/Home.jsx`| Muestra el mapa, los animales y los limites de los campos.|
 | `client/src/pages/Login.jsx`| Muestra un formulario de login, actualmente incompleto.|
