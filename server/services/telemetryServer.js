@@ -15,6 +15,7 @@ export function createTelemetryServer() {
       for (const payload of result.payloads) {
         try {
           await processTelemetryPayload(payload)
+          console.log('Telemetry payload processed successfully')
         } catch (error) {
           console.warn('Could not process telemetry payload:', error.message)
         }

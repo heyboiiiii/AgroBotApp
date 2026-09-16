@@ -584,3 +584,19 @@ export async function seedSampleData() {
     client.release()
   }
 }
+
+/*
+
+  deleteAllGpsPositions() -> Deletes all GPS positions from the gps_positions table and resets the identity sequence.
+*/
+
+export async function deleteAllGpsPositions() {
+    await initializeDatabase()
+    const client = await getDb().connect()
+    try {
+      const result = await client.query('TRUNCATE TABLE gps_positions RESTART IDENTITY')
+      const userId = await getDemoUserId(client)
+  } finally {
+    client.release()
+  }
+}
