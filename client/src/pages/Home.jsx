@@ -32,7 +32,7 @@ export default function Home({ onNavigate }) {
     if (animals.length > 0) {
       return [animals[0].lat, animals[0].lng]
     }
-    return [51.505, -0.09]
+    return [-34.71, -58.24]
   }, [selectedAnimal, animals])
 
   return (
