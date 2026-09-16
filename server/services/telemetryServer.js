@@ -14,7 +14,7 @@ export function createTelemetryServer() {
 
       for (const payload of result.payloads) {
         try {
-          await processTelemetryPayload(payload)
+          await processTelemetryPayload(payload)//upload to db. Table --> gps_positions.
           console.log('Telemetry payload processed successfully')
         } catch (error) {
           console.warn('Could not process telemetry payload:', error.message)

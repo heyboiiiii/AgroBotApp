@@ -265,7 +265,7 @@ export async function listAnimals() {
       const latestGpsResult = await client.query(
         `SELECT ST_Y(location::geometry) AS latitude,
                 ST_X(location::geometry) AS longitude,
-                temperature,
+                temperature
          FROM gps_positions
          WHERE animal_id = $1
          ORDER BY timestamp DESC
