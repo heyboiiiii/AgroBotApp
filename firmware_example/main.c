@@ -136,7 +136,7 @@ int send_collar_data(
         "\"HARDWARE_VERS\":\"%s\","
         "\"LAT\":%.6f,"
         "\"LONG\":%.6f,"
-        "\"TEMP\":\"%s\n",
+        "\"TEMP\":\"%s\"}\n",
         id,
         firmware_vers,
         hardware_vers,
@@ -183,20 +183,6 @@ int main(void)
         -34.707652,//lat
         -58.2423//lon
                 
-    );
-
-
-    send_collar_data(
-        sock,
-        "COLLAR-02",//device id
-        "1.0",//firmware vers
-        "1.0",//hardware vers 
-
-        "38.1",
-
-        -34.707546,
-        -58.239348
-
     );
 
 
