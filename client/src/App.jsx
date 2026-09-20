@@ -26,7 +26,7 @@ function App() {
     return <UserConfig onNavigate={handleNavigate} />
   }
   if(currentPath === '/login'){
-    return <Login onNavigate={handleNavigate,onLoginState}/>
+    return <Login onNavigate={handleNavigate} onLogin={onLoginState}/>
   }
 
   return <Home onNavigate={handleNavigate} />
