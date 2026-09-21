@@ -43,4 +43,18 @@ npm run dev
 
 La aplicación necesita que el backend esté disponible para cargar los animales y actualizar sus nombres.
 
+## Producción
+
+The browser must be able to reach the API. Choose one of these configurations:
+
+- Preferred: serve `dist/` behind a reverse proxy that forwards `/api/` to the
+  backend at port `4000`. An Nginx example is included at
+  `../deployment/nginx/agronomad.conf`. In this setup, leave
+  `VITE_API_BASE_URL` empty.
+- Separate API origin: copy `.env.example` to `.env.production`, set
+  `VITE_API_BASE_URL` to the public API URL (for example,
+  `https://api.example.com`), then run `npm run build` again.
+
+Do not use `localhost` for `VITE_API_BASE_URL` unless the browser and API run
+on the same machine.
 
