@@ -14,7 +14,13 @@
 9 - sudo cp deployment/nginx/agronomad.conf /etc/nginx/sites-available/agronomad
     sudo ln -s /etc/nginx/sites-available/agronomad /etc/nginx/sites-enabled/agronomad
 
-10 - Give permissions to user www-data
+10 - Delete default nginx service(at port 80). 
+
+11 - Enable and start nginx service.
+    sudo systemctl enable nginx
+    sudo systemctl start nginx
+
+12 - Give permissions to user www-data
     setfacl -m u:www-data:--x \
     /home/joa \
     /home/joa/Documents \
