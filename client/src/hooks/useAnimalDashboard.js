@@ -100,6 +100,7 @@ export default function useAnimalDashboard() {
 
         setAnimals(normalized)
         setYardBoundaries(normalizeBoundaryGroups(data))
+        console.log("trying to set yard boundaries.")
 
         if (normalized.length > 0) {
           const stillSelected = normalized.find((animal) => animal.id === previouslySelectedId)
