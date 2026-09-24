@@ -48,9 +48,47 @@ export default function useAnimalDashboard() {
   // ---------- Animals: live via WebSocket ----------
 
   useEffect(() => {
-    async function loadAnimals(){
+
+    let isMounted = true
+
+    const applyAnimals = (rawAnimals) => {
       
-      console.log("trying to load");
+      if (!isMounted) return
+
+      if (!Array.isArray(rawAnimals)) {
+        setError('Invalid animals data format')
+        setLoading(false)
+        return
+      }
+
+      const normalized = rawAnimals.map((item) => ({
+        id: String(item.id ?? ''),
+        name: item.name ?? `Animal ${item.id ?? ''}`,
+        lat: Number(item.lat ?? 0),
+        lng: Number(item.lng ?? 0),
+        temp: String(item.temp ?? ''),
+      }))
+
+      const previouslySelectedId = selectedAnimalRef.current?.id
+
+      setAnimals(normalized)
+
+      if (normalized.length > 0) {
+        const stillSelected = normalized.find((a) => a.id === previouslySelectedId)
+        setSelectedAnimal(stillSelected || normalized[0])
+      } else {
+        setSelectedAnimal(null)
+      }
+
+      setLoading(false)
+      setError(null)
+    }
+
+    async function loadAnimals(){
+      setLoading(true)
+      setError(null)
+
+      if (!isMounted) return
 
       const socket = new WebSocket("ws://localhost:4000/ws/animals");
 
@@ -61,6 +99,21 @@ export default function useAnimalDashboard() {
       socket.onmessage = (event) => {
         const data = JSON.parse(event.data);
 
+         const rawAnimals = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.animals)
+            ? data.animals
+            : []
+        
+        applyAnimals(rawAnimals)
+        /*
+        if (msg?.type === 'animals' || msg?.type === 'update') {
+          console.log("triny");
+          applyAnimals(msg.data ?? msg.animals)
+        } else if (msg?.type === 'error') {
+          console.log("error");
+          setError(msg.message || 'Server error')
+        }*/
         //setCow(data);
         console.log(data);
       };
