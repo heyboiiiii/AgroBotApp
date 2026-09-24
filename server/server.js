@@ -16,15 +16,19 @@ async function startServer() {
   await seedSampleData()
 
   const app = createApp()
+  //Web Socket to tx Animal data constinously
   const httpServer = createServer(app)
   const animalsWebSocketServer = createAnimalsWebSocketServer(httpServer, listAnimals)
   httpServer.listen(HTTP_PORT, () => console.log(`HTTP server listening on port ${HTTP_PORT}`))
 
+  //Tcp Socket to tx Animal data from Firmware constinously
   const tcpServer = createTelemetryServer({
     onTelemetryProcessed: () => animalsWebSocketServer.broadcastAnimals(),
   })
   tcpServer.listen(TCP_PORT, () => console.log(`TCP telemetry server listening on port ${TCP_PORT}`))
 
+  //##################################################################################################
+  
   function shutdown(signal) {
     console.log(`${signal} received, shutting down servers`)
     animalsWebSocketServer.close(() => httpServer.close(() => tcpServer.close(() => process.exit(0))))

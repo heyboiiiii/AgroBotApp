@@ -3,8 +3,37 @@ import { WebSocketServer, WebSocket } from 'ws'
 const ANIMALS_SOCKET_PATH = '/ws/animals'
 
 export function createAnimalsWebSocketServer(httpServer, listAnimals){
-  const wss = new WebSocketServer({ server, path: '/ws/animals' })
+  const wss = new WebSocketServer({ server: httpServer, path: ANIMALS_SOCKET_PATH})
 
+  async function broadcastAnimals(animalsData) {
+
+    const message = JSON.stringify(animalsData);
+
+    wss.clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(message);
+      }
+    });
+  }
+
+  wss.on("connection", (ws) => {
+    console.log("WebSocket client connected");
+
+    ws.on("close", () => {
+      console.log("WebSocket client disconnected");
+    });
+  });
+  
+  wss.on('close', () => clearInterval(broadcastInterval))
+
+  const broadcastInterval = setInterval(async () => {
+    const data = await listAnimals();
+    broadcastAnimals(data);
+    console.log("Sending data from webSocket to client."+data);
+  }, 1000);
+}
+
+/** 
   const UPSTREAM = process.env.UPSTREAM_URL  // e.g. https://your-api/api/animals
   const POLL_MS = 1000
 
@@ -20,7 +49,7 @@ export function createAnimalsWebSocketServer(httpServer, listAnimals){
 
       const json = JSON.stringify(latestPayload)
       for (const client of wss.clients) {
-        if (client.readyState === 1 /* OPEN */) {
+        if (client.readyState === 1  OPEN ) {
           // basic backpressure: skip slow clients
           if (client.bufferedAmount < 1_000_000) client.send(json)
         }
@@ -55,10 +84,7 @@ export function createAnimalsWebSocketServer(httpServer, listAnimals){
   }, 30_000)
 
   wss.on('close', () => clearInterval(heartbeat))
-
-}
-
-
+  */
 
 /**
  * Serves the animal dashboard's live data stream over the same HTTP server as

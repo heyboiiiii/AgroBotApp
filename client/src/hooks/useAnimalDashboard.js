@@ -1,14 +1,11 @@
 // src/hooks/useAnimalDashboard.js
 import { useEffect, useRef, useState } from 'react'
-import { apiUrl } from '../lib/api'
+import { apiUrl, getAnimalsWsUrl} from '../lib/api'
 import { normalizeBoundaryGroups } from '../lib/utils'
 
-// Derive ws:// or wss:// from your apiUrl so it works in dev & prod
-function getAnimalsWsUrl() {
-  const url = new URL(apiUrl('/ws/animals'), window.location.href)
-  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-  return url.toString()
-}
+// Derive ws:// or wss:// from your apiUrl so it works in dev & prod 
+// For example in dev ==> ws://localhost:3000/ws/animals
+
 
 export default function useAnimalDashboard() {
   const [animals, setAnimals] = useState([])
@@ -49,6 +46,42 @@ export default function useAnimalDashboard() {
   }, [])
 
   // ---------- Animals: live via WebSocket ----------
+
+  useEffect(() => {
+    async function loadAnimals(){
+      
+      console.log("trying to load");
+
+      const socket = new WebSocket("ws://localhost:4000/ws/animals");
+
+      socket.onopen = () => {
+        console.log("Connected to server");
+      };
+
+      socket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        //setCow(data);
+        console.log(data);
+      };
+
+      socket.onerror = (error) => {
+        console.error("WebSocket error:", error);
+      };
+
+      socket.onclose = () => {
+        console.log("Disconnected");
+      };
+
+      // Important: close socket when component unmounts
+      return () => {
+        socket.close();
+      };
+    }
+    loadAnimals()
+  }, []);
+  
+  /*
   useEffect(() => {
     let isMounted = true
     let ws = null
@@ -145,6 +178,8 @@ export default function useAnimalDashboard() {
       try { ws?.close() } catch {}
     }
   }, [])
+
+  */
 
   // ---------- Rename: unchanged ----------
   const handleRenameAnimal = async (newName) => {
