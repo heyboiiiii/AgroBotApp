@@ -125,7 +125,7 @@ static int lora_read_fifo(uint8_t *data, size_t length)
     return 0;
 }
 
-static int lora_initialize(void)
+int lora_initialize(void)
 {
     spi_fd = open(SPI_DEVICE, O_RDWR | O_CLOEXEC);
     if (spi_fd < 0) {
@@ -184,7 +184,7 @@ static int lora_initialize(void)
     return 0;
 }
 
-static int lora_receive_packet(uint8_t *data, size_t capacity, size_t *length)
+int lora_receive_packet(uint8_t *data, size_t capacity, size_t *length)
 {
     struct pollfd event_fd = { .fd = dio0_event_fd, .events = POLLIN };
 
@@ -280,7 +280,7 @@ static int forward_to_backend(const agro_neck_payload_t *payload)
     return result;
 }
 
-static void close_receiver(void)
+void close_receiver(void)
 {
     if (dio0_event_fd >= 0) close(dio0_event_fd);
     if (reset_line_fd >= 0) close(reset_line_fd);

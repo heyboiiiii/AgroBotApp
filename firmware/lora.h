@@ -13,10 +13,10 @@
 #define BACKEND_IP "127.0.0.1"
 #define BACKEND_PORT 4001
 
-static int lora_initialize(void);
-static int lora_receive_packet(uint8_t *data, size_t capacity, size_t *length);
+int lora_initialize(void);
+int lora_receive_packet(uint8_t *data, size_t capacity, size_t *length);
 //static int forward_to_backend(const agro_neck_payload_t *payload);
-static void close_receiver(void);
+void close_receiver(void);
 
 typedef struct __attribute__((packed)) {
     uint16_t id_collar;

@@ -1,8 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <pthread.h>
 #include <sys/socket.h>
 
 #include "neo6m.h"
@@ -16,9 +18,19 @@
 
 //GPS NEO6M variables
 int gps_fd = -1; // GPS serial port file descriptor
-double latitude, longitude;
 double temperature;
-char lat_hemisphere, lon_hemisphere;
+
+typedef struct {
+    double latitude;
+    double longitude;
+    int gps_ready;
+    agro_neck_payload_t collar_data;
+    uint64_t collar_generation;
+    int collar_ready;
+} telemetry_state_t;
+
+static telemetry_state_t telemetry_state;
+static pthread_mutex_t telemetry_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static int connect_to_backend(void)
 {
@@ -72,15 +84,75 @@ static int send_collar_data(int sock, const char *payload)
     return 0;
 }
 
-static uint8_t gps_listening(){
-    if(neo6m_read_data(gps_fd, &latitude, &longitude, &lat_hemisphere, &lon_hemisphere, NULL) == 0) {
+static uint8_t gps_listening(double *latitude, double *longitude)
+{
+    char lat_hemisphere;
+    char lon_hemisphere;
+    double speed_kmh = 0.0;
+
+    if (neo6m_read_data(gps_fd, latitude, longitude,
+                        &lat_hemisphere, &lon_hemisphere, &speed_kmh) == 0) {
         printf("Received GPS data:\n");
-        printf("Latitude: %f %c\n", latitude, lat_hemisphere);
-        printf("Longitude: %f %c\n", longitude, lon_hemisphere);
+        printf("Latitude: %f %c\n", *latitude, lat_hemisphere);
+        printf("Longitude: %f %c\n", *longitude, lon_hemisphere);
         return 0;
     }
     printf("No GPS data received within the timeout period.\n");
     return 1;
+}
+
+static void *gps_worker(void *argument)
+{
+    (void)argument;
+
+    for (;;) {
+        double latitude = 0.0;
+        double longitude = 0.0;
+
+        if (gps_listening(&latitude, &longitude) == 0) {
+            pthread_mutex_lock(&telemetry_mutex);
+            telemetry_state.latitude = latitude;
+            telemetry_state.longitude = longitude;
+            telemetry_state.gps_ready = 1;
+            pthread_mutex_unlock(&telemetry_mutex);
+        } else {
+            sleep(1);
+        }
+    }
+
+    return NULL;
+}
+
+static void *lora_worker(void *argument)
+{
+    (void)argument;
+    uint8_t packet[LORA_PACKET_SIZE];
+
+    for (;;) {
+        size_t packet_length = 0;
+        if (lora_receive_packet(packet, sizeof(packet), &packet_length) < 0) {
+            perror("receive LoRa packet");
+            sleep(1);
+            continue;
+        }
+
+        if (packet_length != sizeof(agro_neck_payload_t)) {
+            fprintf(stderr, "Expected %zu-byte LoRa payload, received %zu bytes\n",
+                    sizeof(agro_neck_payload_t), packet_length);
+            continue;
+        }
+
+        agro_neck_payload_t collar_data;
+        memcpy(&collar_data, packet, sizeof(collar_data));
+
+        pthread_mutex_lock(&telemetry_mutex);
+        telemetry_state.collar_data = collar_data;
+        telemetry_state.collar_generation++;
+        telemetry_state.collar_ready = 1;
+        pthread_mutex_unlock(&telemetry_mutex);
+    }
+
+    return NULL;
 }
 
 int main(void)
@@ -114,17 +186,34 @@ int main(void)
     
     */
 
-    uint8_t packet[LORA_PACKET_SIZE];
-    size_t packet_length = 0;
-
     if (lora_initialize() < 0) {
+        neo6m_close_conn(gps_fd);
         close_receiver();
         return EXIT_FAILURE;
     }
-    
 
-    
+    pthread_t gps_thread;
+    pthread_t lora_thread;
+    int thread_result = pthread_create(&gps_thread, NULL, gps_worker, NULL);
+    if (thread_result != 0) {
+        fprintf(stderr, "Could not start GPS worker: %s\n", strerror(thread_result));
+        neo6m_close_conn(gps_fd);
+        close_receiver();
+        return EXIT_FAILURE;
+    }
+
+    thread_result = pthread_create(&lora_thread, NULL, lora_worker, NULL);
+    if (thread_result != 0) {
+        fprintf(stderr, "Could not start LoRa worker: %s\n", strerror(thread_result));
+        pthread_cancel(gps_thread);
+        pthread_join(gps_thread, NULL);
+        neo6m_close_conn(gps_fd);
+        close_receiver();
+        return EXIT_FAILURE;
+    }
+
     int sock = -1;
+    uint64_t sent_collar_generation = 0;
 
     for (;;)
     {   
@@ -140,34 +229,27 @@ int main(void)
                 continue;
             }
         }
-        //GPS data <- RP
-
-        if (gps_listening() != 0)
-        {
-            fprintf(stderr, "GPS: Retrying in %d seconds...\n", SEND_INTERVAL_SECONDS);
-            sleep(SEND_INTERVAL_SECONDS);
-            continue;
-        }
-
-        //LoRa data <- Agroneck
-
-        if (lora_receive_packet(packet, sizeof(packet), &packet_length) < 0) {
-            perror("receive LoRa packet");
-            close_receiver();
-            return EXIT_FAILURE;
-        }
-
-        if (packet_length != sizeof(agro_neck_payload_t)) {
-            fprintf(stderr, "Expected %zu-byte LoRa payload, received %zu bytes\n",
-                    sizeof(agro_neck_payload_t), packet_length);
-            continue;
-        }
-
+        double latitude;
+        double longitude;
+        int gps_ready;
         agro_neck_payload_t collar_data;
-        memcpy(&collar_data, packet, sizeof(collar_data));
+        uint64_t collar_generation;
+        int collar_ready;
 
+        pthread_mutex_lock(&telemetry_mutex);
+        latitude = telemetry_state.latitude;
+        longitude = telemetry_state.longitude;
+        gps_ready = telemetry_state.gps_ready;
+        collar_data = telemetry_state.collar_data;
+        collar_generation = telemetry_state.collar_generation;
+        collar_ready = telemetry_state.collar_ready;
+        pthread_mutex_unlock(&telemetry_mutex);
 
-        // Send Raspberry GPS data and the decoded collar telemetry separately.
+        if (!gps_ready) {
+            sleep(1);
+            continue;
+        }
+
         char payload[192];
         snprintf(payload, sizeof(payload),
                  "{\"ID\":\"RP\",\"FIRMWARE_VERS\":\"1.0\",\"HARDWARE_VERS\":\"1.0\",\"LAT\":%.6f,\"LONG\":%.6f,\"TEMP\":\"%.2f\"}\n",
@@ -182,18 +264,20 @@ int main(void)
             continue;
         }
 
-        snprintf(payload, sizeof(payload),
-                 "{\"ID\":\"COLLAR-%02u\",\"FIRMWARE_VERS\":\"1.0\",\"HARDWARE_VERS\":\"1.0\",\"LAT\":%.6f,\"LONG\":%.6f,\"TEMP\":\"%.2f\"}\n",
-                 (unsigned)collar_data.id_collar,
-                 collar_data.latitud / 1000000.0,
-                 collar_data.longitud / 1000000.0,
-                 collar_data.temperatura);
+        if (collar_ready && collar_generation != sent_collar_generation) {
+            snprintf(payload, sizeof(payload),
+                     "{\"ID\":\"COLLAR-%02u\",\"FIRMWARE_VERS\":\"1.0\",\"HARDWARE_VERS\":\"1.0\",\"LAT\":%.6f,\"LONG\":%.6f,\"TEMP\":\"%.2f\"}\n",
+                     (unsigned)collar_data.id_collar,
+                     collar_data.latitud / 1000000.0,
+                     collar_data.longitud / 1000000.0,
+                     collar_data.temperatura);
 
-        if (send_collar_data(sock, payload) < 0)
-        {
-            close(sock);
-            sock = -1;
-            continue;
+            if (send_collar_data(sock, payload) < 0) {
+                close(sock);
+                sock = -1;
+                continue;
+            }
+            sent_collar_generation = collar_generation;
         }
 
         sleep(SEND_INTERVAL_SECONDS);
