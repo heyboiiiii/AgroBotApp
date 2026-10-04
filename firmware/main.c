@@ -124,8 +124,6 @@ int main(void)
     
 
     
-    const size_t payload_count = sizeof(payloads) / sizeof(payloads[0]);
-    size_t payload_index = 0;
     int sock = -1;
 
     for (;;)
@@ -159,12 +157,20 @@ int main(void)
             return EXIT_FAILURE;
         }
 
+        if (packet_length != sizeof(agro_neck_payload_t)) {
+            fprintf(stderr, "Expected %zu-byte LoRa payload, received %zu bytes\n",
+                    sizeof(agro_neck_payload_t), packet_length);
+            continue;
+        }
 
-        // Prepare the payload with the latest GPS data
+        agro_neck_payload_t collar_data;
+        memcpy(&collar_data, packet, sizeof(collar_data));
+
+
+        // Send Raspberry GPS data and the decoded collar telemetry separately.
         char payload[192];
         snprintf(payload, sizeof(payload),
-                 "{\"ID\":\"COLLAR-%02zu\",\"LAT\":%.6f,\"LONG\":%.6f,\"TEMP\":\"%.2f\"}\n",
-                 payload_index + 1,
+                 "{\"ID\":\"RP\",\"FIRMWARE_VERS\":\"1.0\",\"HARDWARE_VERS\":\"1.0\",\"LAT\":%.6f,\"LONG\":%.6f,\"TEMP\":\"%.2f\"}\n",
                  latitude,
                  longitude,
                  temperature);
@@ -176,7 +182,20 @@ int main(void)
             continue;
         }
 
-        payload_index = (payload_index + 1) % payload_count;
+        snprintf(payload, sizeof(payload),
+                 "{\"ID\":\"COLLAR-%02u\",\"FIRMWARE_VERS\":\"1.0\",\"HARDWARE_VERS\":\"1.0\",\"LAT\":%.6f,\"LONG\":%.6f,\"TEMP\":\"%.2f\"}\n",
+                 (unsigned)collar_data.id_collar,
+                 collar_data.latitud / 1000000.0,
+                 collar_data.longitud / 1000000.0,
+                 collar_data.temperatura);
+
+        if (send_collar_data(sock, payload) < 0)
+        {
+            close(sock);
+            sock = -1;
+            continue;
+        }
+
         sleep(SEND_INTERVAL_SECONDS);
     }
 
