@@ -167,8 +167,9 @@ int lora_initialize(void)
     if (lora_write_register(0x01, 0x80) < 0) return -1;
     usleep(10000);
     if (lora_write_register(0x01, 0x81) < 0) return -1;
-    if (lora_write_register(0x06, 0xE4) < 0) return -1;
-    if (lora_write_register(0x07, 0xC0) < 0) return -1;
+    //Frequency 433hmz
+    if (lora_write_register(0x06, 0x6C) < 0) return -1;
+    if (lora_write_register(0x07, 0x40) < 0) return -1;
     if (lora_write_register(0x08, 0x00) < 0) return -1;
     if (lora_write_register(0x1D, 0x72) < 0) return -1;
     if (lora_write_register(0x1E, 0x70) < 0) return -1;
@@ -180,7 +181,7 @@ int lora_initialize(void)
     if (lora_write_register(0x12, 0xFF) < 0) return -1;
     if (lora_write_register(0x01, 0x85) < 0) return -1;
 
-    printf("Listening for AgroNeck LoRa packets at 915 MHz\n");
+    printf("Listening for AgroNeck LoRa packets at 433 MHz\n");
     return 0;
 }
 
