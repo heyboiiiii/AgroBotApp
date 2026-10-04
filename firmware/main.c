@@ -255,6 +255,7 @@ int main(void)
 
         if (!gps_ready) {
             sleep(1);
+            printf("Waiting for GPS data...\n");
             continue;
         }
         

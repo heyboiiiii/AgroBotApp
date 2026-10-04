@@ -125,12 +125,12 @@ uint8_t neo6m_read_data(int fd, double *latitude, double *longitude, char *lat_h
         printf("Read timeout occurred.\n");
         return 1;
     } else {
-        printf("Read %i bytes. Received message: %s\n", num_bytes, read_buffer);
+        //printf("Read %i bytes. Received message: %s\n", num_bytes, read_buffer);
 
         // Parse the GPS data
         neo6m_get_parse_data(read_buffer, latitude, longitude, lat_hemisphere, lon_hemisphere, speedKmh);
             
-        printf("Parsed GPS data: Lat: %lf %c, Lon: %lf %c, Speed: %lf km/h\n", *latitude, *lat_hemisphere, *longitude, *lon_hemisphere, *speedKmh);
+        //printf("Parsed GPS data: Lat: %lf %c, Lon: %lf %c, Speed: %lf km/h\n", *latitude, *lat_hemisphere, *longitude, *lon_hemisphere, *speedKmh);
     }
     return 0;
 }
