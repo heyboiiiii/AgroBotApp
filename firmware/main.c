@@ -10,7 +10,7 @@
 #include "neo6m.h"
 #include "lora.h"
 
-#define SERIAL_PORT "/dev/ttyUSB0"//GPS
+#define SERIAL_PORT "/dev/ttyS0"//GPS
 
 #define SERVER_IP "127.0.0.1"
 #define SERVER_PORT 4001
@@ -64,7 +64,7 @@ static int connect_to_backend(void)
     return sock;
 }
 
-static int send_collar_data(int sock, const char *payload)
+static int send_telemetry(int sock, const char *source, const char *payload)
 {
     size_t length = strlen(payload);
     size_t sent = 0;
@@ -80,7 +80,7 @@ static int send_collar_data(int sock, const char *payload)
         sent += (size_t)result;
     }
 
-    printf("Sent telemetry: %s", payload);
+    printf("[Backend] Sent %s telemetry: %s", source, payload);
     return 0;
 }
 
@@ -144,6 +144,14 @@ static void *lora_worker(void *argument)
 
         agro_neck_payload_t collar_data;
         memcpy(&collar_data, packet, sizeof(collar_data));
+
+         printf("[LoRa] Received %zu-byte packet: COLLAR-%02u, temperature=%.2f C, "
+             "latitude=%.6f, longitude=%.6f\n",
+             packet_length,
+             (unsigned)collar_data.id_collar,
+             collar_data.temperatura,
+             collar_data.latitud / 1000000.0,
+             collar_data.longitud / 1000000.0);
 
         pthread_mutex_lock(&telemetry_mutex);
         telemetry_state.collar_data = collar_data;
@@ -249,7 +257,7 @@ int main(void)
             sleep(1);
             continue;
         }
-
+        
         char payload[192];
         snprintf(payload, sizeof(payload),
                  "{\"ID\":\"RP\",\"FIRMWARE_VERS\":\"1.0\",\"HARDWARE_VERS\":\"1.0\",\"LAT\":%.6f,\"LONG\":%.6f,\"TEMP\":\"%.2f\"}\n",
@@ -257,7 +265,7 @@ int main(void)
                  longitude,
                  temperature);
 
-        if (send_collar_data(sock, payload) < 0)
+        if (send_telemetry(sock, "RP", payload) < 0)
         {
             close(sock);
             sock = -1;
@@ -272,7 +280,7 @@ int main(void)
                      collar_data.longitud / 1000000.0,
                      collar_data.temperatura);
 
-            if (send_collar_data(sock, payload) < 0) {
+            if (send_telemetry(sock, "collar", payload) < 0) {
                 close(sock);
                 sock = -1;
                 continue;
