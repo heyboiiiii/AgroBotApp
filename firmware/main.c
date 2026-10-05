@@ -6,6 +6,7 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 #include <sys/socket.h>
+#include <time.h>
 
 #include "neo6m.h"
 #include "lora.h"
@@ -15,6 +16,7 @@
 #define SERVER_IP "127.0.0.1"
 #define SERVER_PORT 4001
 #define SEND_INTERVAL_SECONDS 5
+#define COLLAR_QUEUE_CAPACITY 32
 
 //GPS NEO6M variables
 int gps_fd = -1; // GPS serial port file descriptor
@@ -24,13 +26,14 @@ typedef struct {
     double latitude;
     double longitude;
     int gps_ready;
-    agro_neck_payload_t collar_data;
-    uint64_t collar_generation;
-    int collar_ready;
+    agro_neck_payload_t collar_queue[COLLAR_QUEUE_CAPACITY];
+    size_t collar_queue_head;
+    size_t collar_queue_count;
 } telemetry_state_t;
 
 static telemetry_state_t telemetry_state;
 static pthread_mutex_t telemetry_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t telemetry_condition = PTHREAD_COND_INITIALIZER;
 
 static int connect_to_backend(void)
 {
@@ -92,9 +95,9 @@ static uint8_t gps_listening(double *latitude, double *longitude)
 
     if (neo6m_read_data(gps_fd, latitude, longitude,
                         &lat_hemisphere, &lon_hemisphere, &speed_kmh) == 0) {
-        printf("Received GPS data:\n");
-        printf("Latitude: %f %c\n", *latitude, lat_hemisphere);
-        printf("Longitude: %f %c\n", *longitude, lon_hemisphere);
+        //printf("Received GPS data:\n");
+        //printf("Latitude: %f %c\n", *latitude, lat_hemisphere);
+        //printf("Longitude: %f %c\n", *longitude, lon_hemisphere);
         return 0;
     }
     printf("No GPS data received within the timeout period.\n");
@@ -114,6 +117,7 @@ static void *gps_worker(void *argument)
             telemetry_state.latitude = latitude;
             telemetry_state.longitude = longitude;
             telemetry_state.gps_ready = 1;
+            pthread_cond_signal(&telemetry_condition);
             pthread_mutex_unlock(&telemetry_mutex);
         } else {
             sleep(1);
@@ -153,11 +157,29 @@ static void *lora_worker(void *argument)
              collar_data.latitud / 1000000.0,
              collar_data.longitud / 1000000.0);
 
+        uint16_t dropped_collar_id = 0;
+        int dropped_oldest = 0;
         pthread_mutex_lock(&telemetry_mutex);
-        telemetry_state.collar_data = collar_data;
-        telemetry_state.collar_generation++;
-        telemetry_state.collar_ready = 1;
+        if (telemetry_state.collar_queue_count == COLLAR_QUEUE_CAPACITY) {
+            dropped_collar_id = telemetry_state.collar_queue[
+                telemetry_state.collar_queue_head].id_collar;
+            dropped_oldest = 1;
+            telemetry_state.collar_queue_head =
+                (telemetry_state.collar_queue_head + 1) % COLLAR_QUEUE_CAPACITY;
+            telemetry_state.collar_queue_count--;
+        }
+
+        size_t queue_tail = (telemetry_state.collar_queue_head +
+                             telemetry_state.collar_queue_count) % COLLAR_QUEUE_CAPACITY;
+        telemetry_state.collar_queue[queue_tail] = collar_data;
+        telemetry_state.collar_queue_count++;
+        pthread_cond_signal(&telemetry_condition);
         pthread_mutex_unlock(&telemetry_mutex);
+
+        if (dropped_oldest) {
+            fprintf(stderr, "[LoRa] Queue full; dropped oldest packet for COLLAR-%02u\n",
+                    (unsigned)dropped_collar_id);
+        }
     }
 
     return NULL;
@@ -221,7 +243,7 @@ int main(void)
     }
 
     int sock = -1;
-    uint64_t sent_collar_generation = 0;
+    time_t next_rp_send = time(NULL);
 
     for (;;)
     {   
@@ -237,43 +259,33 @@ int main(void)
                 continue;
             }
         }
-        double latitude;
-        double longitude;
-        int gps_ready;
         agro_neck_payload_t collar_data;
-        uint64_t collar_generation;
-        int collar_ready;
+        double latitude = 0.0;
+        double longitude = 0.0;
+        int send_collar = 0;
 
         pthread_mutex_lock(&telemetry_mutex);
-        latitude = telemetry_state.latitude;
-        longitude = telemetry_state.longitude;
-        gps_ready = telemetry_state.gps_ready;
-        collar_data = telemetry_state.collar_data;
-        collar_generation = telemetry_state.collar_generation;
-        collar_ready = telemetry_state.collar_ready;
+        while (telemetry_state.collar_queue_count == 0 &&
+               (!telemetry_state.gps_ready || time(NULL) < next_rp_send)) {
+            if (telemetry_state.gps_ready) {
+                struct timespec deadline = { .tv_sec = next_rp_send, .tv_nsec = 0 };
+                pthread_cond_timedwait(&telemetry_condition, &telemetry_mutex, &deadline);
+            } else {
+                pthread_cond_wait(&telemetry_condition, &telemetry_mutex);
+            }
+        }
+
+        if (telemetry_state.collar_queue_count > 0) {
+            collar_data = telemetry_state.collar_queue[telemetry_state.collar_queue_head];
+            send_collar = 1;
+        } else {
+            latitude = telemetry_state.latitude;
+            longitude = telemetry_state.longitude;
+        }
         pthread_mutex_unlock(&telemetry_mutex);
 
-        if (!gps_ready) {
-            sleep(1);
-            printf("Waiting for GPS data...\n");
-            continue;
-        }
-        
         char payload[192];
-        snprintf(payload, sizeof(payload),
-                 "{\"ID\":\"RP\",\"FIRMWARE_VERS\":\"1.0\",\"HARDWARE_VERS\":\"1.0\",\"LAT\":%.6f,\"LONG\":%.6f,\"TEMP\":\"%.2f\"}\n",
-                 latitude,
-                 longitude,
-                 temperature);
-
-        if (send_telemetry(sock, "RP", payload) < 0)
-        {
-            close(sock);
-            sock = -1;
-            continue;
-        }
-
-        if (collar_ready && collar_generation != sent_collar_generation) {
+        if (send_collar) {
             snprintf(payload, sizeof(payload),
                      "{\"ID\":\"COLLAR-%02u\",\"FIRMWARE_VERS\":\"1.0\",\"HARDWARE_VERS\":\"1.0\",\"LAT\":%.6f,\"LONG\":%.6f,\"TEMP\":\"%.2f\"}\n",
                      (unsigned)collar_data.id_collar,
@@ -286,10 +298,28 @@ int main(void)
                 sock = -1;
                 continue;
             }
-            sent_collar_generation = collar_generation;
+
+            pthread_mutex_lock(&telemetry_mutex);
+            telemetry_state.collar_queue_head =
+                (telemetry_state.collar_queue_head + 1) % COLLAR_QUEUE_CAPACITY;
+            telemetry_state.collar_queue_count--;
+            pthread_mutex_unlock(&telemetry_mutex);
+            continue;
         }
 
-        sleep(SEND_INTERVAL_SECONDS);
+        snprintf(payload, sizeof(payload),
+                 "{\"ID\":\"RP\",\"FIRMWARE_VERS\":\"1.0\",\"HARDWARE_VERS\":\"1.0\",\"LAT\":%.6f,\"LONG\":%.6f,\"TEMP\":\"%.2f\"}\n",
+                 latitude,
+                 longitude,
+                 temperature);
+
+        if (send_telemetry(sock, "RP", payload) < 0) {
+            close(sock);
+            sock = -1;
+            continue;
+        }
+
+        next_rp_send = time(NULL) + SEND_INTERVAL_SECONDS;
     }
 
     close(sock);
