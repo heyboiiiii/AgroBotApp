@@ -59,8 +59,6 @@ export async function processTelemetryPayload(payload) {
   const items = Array.isArray(parsed) ? parsed : [parsed]
 
   for (const item of items) {
-    if (normalizeAnimalPayload(item)) {
-      await upsertAnimalSnapshot(item)
-    }
-  }
+    if (normalizeAnimalPayload(item)) await upsertAnimalSnapshot(item)
+  }//upload to db.
 }

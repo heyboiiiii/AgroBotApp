@@ -69,6 +69,18 @@ cmake --build build -j2
 
 Se generan dos ejecutables: `build/agrobot-lora-receiver`, para recibir LoRa en la Raspberry, y `build/agro-neck-client`, el simulador TCP para pruebas sin radio.
 
+Si actualizaste el código en otra computadora, copiá esos cambios a la Raspberry antes de compilar. Podés confirmar la configuración del receptor con:
+
+```bash
+grep -nE '0x06|0x07|Listening for' lora_receiver.c
+```
+
+Para 433 MHz debe mostrar `0x6C`, `0x40` y `433 MHz`. Después recompilá:
+
+```bash
+cmake --build build --clean-first -j2
+```
+
 ## 4. Arrancar el backend
 
 En una terminal de la Raspberry:
