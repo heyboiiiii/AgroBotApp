@@ -106,7 +106,7 @@ sudo ./build/agrobot-lora-receiver
 Debería mostrar la versión del SX1278 y luego:
 
 ```text
-Listening for AgroNeck LoRa packets at 915 MHz
+Listening for AgroNeck LoRa packets at 433 MHz
 ```
 
 Dejá el receptor corriendo antes de encender o despertar el AgroNeck. `sudo` permite abrir `/dev/spidev0.0` y solicitar las líneas GPIO.
@@ -122,7 +122,7 @@ idf.py build
 idf.py -p /dev/ttyUSB0 flash monitor
 ```
 
-Reemplazá `/dev/ttyUSB0` por el puerto serie real. El primer arranque del firmware configura la interrupción de movimiento y entra en deep sleep. Con el receptor LoRa ya corriendo, mové el collar para despertarlo y provocar la lectura/transmisión. La radio se inicializa antes de transmitir; ambos módulos están configurados para 915 MHz.
+Reemplazá `/dev/ttyUSB0` por el puerto serie real. El primer arranque del firmware configura la interrupción de movimiento y entra en deep sleep. Con el receptor LoRa ya corriendo, mové el collar para despertarlo y provocar la lectura/transmisión. La radio se inicializa antes de transmitir; ambos módulos están configurados para 433 MHz.
 
 Al recibir una trama, la terminal del receptor debe mostrar `collar=122`, temperatura y coordenadas. La terminal del backend debe indicar que procesó el payload. El receptor decodifica los 14 bytes, los convierte a JSON y los envía por TCP a `127.0.0.1:4001`.
 
