@@ -10,9 +10,9 @@
 
 /* Edit these values to configure the simulated collar telemetry. */
 #define COLLAR_ID 1U
-#define TEMPERATURE_C 38.4
-#define LATITUDE -34.707652
-#define LONGITUDE -58.242300
+#define TEMPERATURE_C 26.0
+#define LATITUDE -31.3375349
+#define LONGITUDE -64.2569015
 #define SEND_INTERVAL_SECONDS 5U
 
 #define BACKEND_IP "127.0.0.1"
