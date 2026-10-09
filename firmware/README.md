@@ -87,9 +87,10 @@ Raspberry Pi ni el módulo LoRa. Antes de compilar, editá al comienzo del archi
 `COLLAR_ID`, `TEMPERATURE_C`, `LATITUDE`, `LONGITUDE` y
 `SEND_INTERVAL_SECONDS` para establecer los valores y el intervalo de envío.
 
-El programa imprime cada lectura simulada y, si el backend está disponible,
-reenvía el mismo JSON al puerto TCP `127.0.0.1:4001`. Si el backend no está
-disponible, informa el error y continúa simulando; vuelve a intentar en la
+El programa imprime cada lectura con el mismo formato que el receptor
+(`Received collar=... temperature=... C latitude=... longitude=...`) y, si el
+backend está disponible, reenvía el mismo JSON al puerto TCP `127.0.0.1:4001`.
+Si el backend no está disponible, informa el error y vuelve a intentar en la
 siguiente lectura. Se detiene con `Ctrl+C`.
 
 Compilalo y ejecutalo desde esta carpeta:

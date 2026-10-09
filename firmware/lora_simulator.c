@@ -73,30 +73,18 @@ static int forward_to_backend(const char *message)
 
 int main(void)
 {
-    unsigned long long reading = 0;
-
-    printf("Starting LoRa telemetry simulation for COLLAR-%02u\n",
-           COLLAR_ID);
-    printf("Configured values: temperature=%.2f C, latitude=%.6f, "
-           "longitude=%.6f; interval=%u seconds\n",
-           TEMPERATURE_C, LATITUDE, LONGITUDE, SEND_INTERVAL_SECONDS);
-    printf("Backend: %s:%d (Ctrl+C to stop)\n", BACKEND_IP, BACKEND_PORT);
-
     for (;;) {
         char message[192];
         snprintf(message, sizeof(message),
-                 "{\"ID\":\"COLLAR-%02u\",\"LAT\":%.6f,"
+                 "{\"ID\":\"COLLAR-%u\",\"LAT\":%.6f,"
                  "\"LONG\":%.6f,\"TEMP\":\"%.2f\"}\n",
-                 COLLAR_ID, LATITUDE, LONGITUDE, TEMPERATURE_C);
+                 (unsigned)COLLAR_ID, LATITUDE, LONGITUDE, TEMPERATURE_C);
 
-        printf("[LoRa simulation #%llu] Received COLLAR-%02u: "
-               "temperature=%.2f C, latitude=%.6f, longitude=%.6f\n",
-               ++reading, COLLAR_ID, TEMPERATURE_C, LATITUDE, LONGITUDE);
+        printf("Received collar=%u temperature=%.2f C latitude=%.6f longitude=%.6f\n",
+               (unsigned)COLLAR_ID, TEMPERATURE_C, LATITUDE, LONGITUDE);
         fflush(stdout);
 
-        if (forward_to_backend(message) == 0) {
-            printf("[Backend] Sent telemetry: %s", message);
-        }
+        forward_to_backend(message);
 
         sleep(SEND_INTERVAL_SECONDS);
     }
