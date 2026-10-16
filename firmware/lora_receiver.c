@@ -20,7 +20,7 @@
 #define GPIO_LORA_RESET 25
 #define GPIO_LORA_DIO0 24
 #define SPI_SPEED_HZ 5000000U
-#define LORA_PACKET_SIZE 14
+#define LORA_PACKET_SIZE 14 
 #define BACKEND_IP "127.0.0.1"
 #define BACKEND_PORT 4001
 
@@ -183,13 +183,14 @@ static int lora_initialize(void)
     if (lora_write_register(0x01, 0x80) < 0) return -1;
     usleep(10000);
     if (lora_write_register(0x01, 0x81) < 0) return -1;
+    //Frequency 433hmz
     if (lora_write_register(0x06, 0x6C) < 0) return -1;
     if (lora_write_register(0x07, 0x40) < 0) return -1;
     if (lora_write_register(0x08, 0x00) < 0) return -1;
     if (lora_write_register(0x1D, 0x72) < 0) return -1;
-    if (lora_write_register(0x1E, 0x74) < 0) return -1;
-    if (lora_write_register(0x26, 0x00) < 0) return -1;
-    if (lora_write_register(0x39, 0x34) < 0) return -1;
+    if (lora_write_register(0x1E, 0x70) < 0) return -1;
+    if (lora_write_register(0x26, 0x04) < 0) return -1;
+    if (lora_write_register(0x39, 0x12) < 0) return -1;
     if (lora_write_register(0x0E, 0x00) < 0) return -1;
     if (lora_write_register(0x0F, 0x00) < 0) return -1;
     if (lora_write_register(0x40, 0x00) < 0) return -1;
@@ -286,8 +287,8 @@ static int forward_to_backend(const agro_neck_payload_t *payload)
     snprintf(json, sizeof(json),
              "{\"ID\":\"COLLAR-%u\",\"LAT\":%.6f,\"LONG\":%.6f,\"TEMP\":\"%.2f\"}\n",
              (unsigned)payload->id_collar,
-             payload->latitud / -1000000.0,
-             payload->longitud / -1000000.0,
+             payload->latitud / 1000000.0,
+             payload->longitud / 1000000.0,
              payload->temperatura);
 
     int result = send_all(sock, json);
@@ -324,12 +325,6 @@ int main(void)
                     sizeof(agro_neck_payload_t), packet_length);
             continue;
         }
-
-        printf("Raw LoRa packet (%zu bytes):", packet_length);
-        for (size_t index = 0; index < packet_length; index++) {
-            printf(" %02X", packet[index]);
-        }
-        putchar('\n');
 
         agro_neck_payload_t payload;
         memcpy(&payload, packet, sizeof(payload));
